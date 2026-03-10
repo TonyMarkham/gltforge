@@ -77,6 +77,13 @@ pub fn build_unity_gltf(
         let total_verts: usize = prims.iter().map(|p| p.positions.len()).sum();
         let use_u32 = total_verts > 65535;
         let all_have_normals = prims.iter().all(|p| p.normals.is_some());
+        let all_have_tangents = prims.iter().all(|p| p.tangents.is_some());
+
+        // Determine how many UV channels are shared by every primitive (stop at first gap).
+        let max_uv_channels = prims.iter().map(|p| p.uvs.len()).min().unwrap_or(0);
+        let uv_channel_count = (0..max_uv_channels)
+            .take_while(|&ch| prims.iter().all(|p| p.uvs[ch].is_some()))
+            .count();
 
         let mut vertices: Vec<[f32; 3]> = Vec::with_capacity(total_verts);
         let mut normals: Vec<[f32; 3]> = if all_have_normals {
@@ -84,11 +91,21 @@ pub fn build_unity_gltf(
         } else {
             Vec::new()
         };
+        let mut tangents: Vec<[f32; 4]> = if all_have_tangents {
+            Vec::with_capacity(total_verts)
+        } else {
+            Vec::new()
+        };
+        let mut uvs: Vec<Vec<[f32; 2]>> = (0..uv_channel_count)
+            .map(|_| Vec::with_capacity(total_verts))
+            .collect();
         let mut sub_meshes: Vec<UnitySubMesh> = Vec::with_capacity(prims.len());
 
         for GltfPrimitiveData {
             positions,
             normals: prim_norms,
+            tangents: prim_tangs,
+            uvs: prim_uvs,
             wound,
         } in prims
         {
@@ -97,6 +114,16 @@ pub fn build_unity_gltf(
 
             if let Some(n) = prim_norms {
                 normals.extend_from_slice(&n);
+            }
+
+            if let Some(t) = prim_tangs {
+                tangents.extend_from_slice(&t);
+            }
+
+            for (ch, ch_buf) in uvs.iter_mut().enumerate() {
+                if let Some(Some(ch_uvs)) = prim_uvs.get(ch) {
+                    ch_buf.extend_from_slice(ch_uvs);
+                }
             }
 
             let indices = if use_u32 {
@@ -116,6 +143,8 @@ pub fn build_unity_gltf(
                 name,
                 vertices,
                 normals,
+                tangents,
+                uvs,
                 sub_meshes,
             },
         );
@@ -240,9 +269,77 @@ fn resolve_primitive(
         None
     };
 
+    // ---- tangents (optional) ------------------------------------------------
+
+    let tangents = if let Some(&tang_id) = prim.attributes.get("TANGENT") {
+        let tang_acc = accessors.get(tang_id as usize).ok_or_else(|| {
+            ConvertError::PositionAccessorOutOfRange {
+                location: ErrorLocation::from(Location::caller()),
+            }
+        })?;
+
+        let tang_bytes =
+            resolve_accessor(tang_acc, bvs, buffers).map_err(|e| ConvertError::Resolve {
+                source: e,
+                location: ErrorLocation::from(Location::caller()),
+            })?;
+
+        Some(
+            tang_bytes
+                .chunks_exact(16)
+                .map(|c| {
+                    let x = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                    let y = f32::from_le_bytes([c[4], c[5], c[6], c[7]]);
+                    let z = f32::from_le_bytes([c[8], c[9], c[10], c[11]]);
+                    let w = f32::from_le_bytes([c[12], c[13], c[14], c[15]]);
+                    // Negate X (coordinate flip) and W (bitangent handedness flip).
+                    [-x, y, z, -w]
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
+
+    // ---- UV channels (optional, TEXCOORD_0 … TEXCOORD_7) -------------------
+
+    let mut uvs: Vec<Option<Vec<[f32; 2]>>> = Vec::new();
+    for ch in 0u32..8 {
+        let key = format!("TEXCOORD_{ch}");
+        let Some(&uv_id) = prim.attributes.get(&key) else {
+            break; // Stop at the first absent channel.
+        };
+
+        let uv_acc = accessors.get(uv_id as usize).ok_or_else(|| {
+            ConvertError::PositionAccessorOutOfRange {
+                location: ErrorLocation::from(Location::caller()),
+            }
+        })?;
+
+        let uv_bytes =
+            resolve_accessor(uv_acc, bvs, buffers).map_err(|e| ConvertError::Resolve {
+                source: e,
+                location: ErrorLocation::from(Location::caller()),
+            })?;
+
+        let channel: Vec<[f32; 2]> = uv_bytes
+            .chunks_exact(8)
+            .map(|c| {
+                let u = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                let v = f32::from_le_bytes([c[4], c[5], c[6], c[7]]);
+                // Flip V: glTF origin is top-left, Unity origin is bottom-left.
+                [u, 1.0 - v]
+            })
+            .collect();
+
+        uvs.push(Some(channel));
+    }
+
     Ok(GltfPrimitiveData {
         positions,
         normals,
+        tangents,
+        uvs,
         wound,
     })
 }

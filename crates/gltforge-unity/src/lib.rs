@@ -14,7 +14,8 @@ pub use unity_gltf::{UnityGltf, gltforge_load, gltforge_release, gltforge_retain
 pub use unity_indices::UnityIndices;
 pub use unity_mesh::{
     UnityMesh, gltforge_mesh_count, gltforge_mesh_index_format, gltforge_mesh_name,
-    gltforge_mesh_positions, gltforge_mesh_vertex_count,
+    gltforge_mesh_positions, gltforge_mesh_tangents, gltforge_mesh_uv_channel_count,
+    gltforge_mesh_uvs, gltforge_mesh_vertex_count,
 };
 pub use unity_node::{
     UnityNode, gltforge_node_child, gltforge_node_child_count, gltforge_node_count,

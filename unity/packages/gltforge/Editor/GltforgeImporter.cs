@@ -122,6 +122,35 @@ namespace Gltforge.Editor
             if (normals != null)
                 mesh.normals = normals;
 
+            // ---- tangents (optional) -----------------------------------------
+
+            IntPtr tangPtr = GltforgeNative.gltforge_mesh_tangents(handle, meshIdx, out uint tangFloatCount);
+            if (tangPtr != IntPtr.Zero && tangFloatCount > 0)
+            {
+                float[] tangFloats = new float[tangFloatCount];
+                Marshal.Copy(tangPtr, tangFloats, 0, (int)tangFloatCount);
+                var tangents = new Vector4[tangFloatCount / 4];
+                for (int i = 0; i < tangents.Length; i++)
+                    tangents[i] = new Vector4(tangFloats[i * 4], tangFloats[i * 4 + 1], tangFloats[i * 4 + 2], tangFloats[i * 4 + 3]);
+                mesh.tangents = tangents;
+            }
+
+            // ---- UV channels (optional) -------------------------------------
+
+            uint uvChannelCount = GltforgeNative.gltforge_mesh_uv_channel_count(handle, meshIdx);
+            for (uint ch = 0; ch < uvChannelCount; ch++)
+            {
+                IntPtr uvPtr = GltforgeNative.gltforge_mesh_uvs(handle, meshIdx, ch, out uint uvFloatCount);
+                if (uvPtr == IntPtr.Zero || uvFloatCount == 0) continue;
+
+                float[] uvFloats = new float[uvFloatCount];
+                Marshal.Copy(uvPtr, uvFloats, 0, (int)uvFloatCount);
+                var uvs = new Vector2[uvFloatCount / 2];
+                for (int i = 0; i < uvs.Length; i++)
+                    uvs[i] = new Vector2(uvFloats[i * 2], uvFloats[i * 2 + 1]);
+                mesh.SetUVs((int)ch, uvs);
+            }
+
             // ---- sub-meshes -------------------------------------------------
 
             uint submeshCount = GltforgeNative.gltforge_mesh_submesh_count(handle, meshIdx);

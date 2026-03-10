@@ -36,6 +36,9 @@ namespace Gltforge
         [DllImport(Lib)] public static extern uint   gltforge_mesh_index_format(IntPtr handle, uint meshIdx);
         [DllImport(Lib)] public static extern IntPtr gltforge_mesh_positions(IntPtr handle, uint meshIdx, out uint len);
         [DllImport(Lib)] public static extern IntPtr gltforge_mesh_normals(IntPtr handle, uint meshIdx, out uint len);
+        [DllImport(Lib)] public static extern IntPtr gltforge_mesh_tangents(IntPtr handle, uint meshIdx, out uint len);
+        [DllImport(Lib)] public static extern uint   gltforge_mesh_uv_channel_count(IntPtr handle, uint meshIdx);
+        [DllImport(Lib)] public static extern IntPtr gltforge_mesh_uvs(IntPtr handle, uint meshIdx, uint channel, out uint len);
 
         // ---- sub-meshes -----------------------------------------------------
 
