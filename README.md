@@ -2,131 +2,107 @@
 
 > Spec-compliant, extension-first glTF 2.0 for Rust
 
-`gltforge` is a glTF 2.0 library built around a single principle: extensions are first-class citizens, not afterthoughts. Every intermediate stage of parsing, validation, and processing is owned by the caller — nothing is hidden.
-
-## Why gltforge?
-
-Existing glTF libraries treat custom extensions as a bolted-on concern. `gltforge` is designed from the ground up so that extension authors have full typed access to the document, buffer views, accessors, and validation pipeline — at every stage.
+`gltforge` is a glTF 2.0 toolkit built around a single principle: extensions are first-class citizens, not afterthoughts. Every intermediate stage of parsing, validation, and processing is owned by the caller — nothing is hidden.
 
 - **Extension-first** — typed extension registration, import and export treated equally
 - **Open by design** — every intermediate representation is public and caller-owned
-- **Async from scratch** — progressive loading via streams, shared caches, structured cancellation
 - **Cross-platform** — native dylib (Windows, macOS, Linux, iOS, Android), WASM, PyO3 (Blender)
 - **Spec-compliant** — `extensionsRequired` enforced as hard errors, not warnings
 
-## Status
-
-Early development. Not yet published to crates.io.
-
 ## Workspace
 
-```
-gltforge/          # core library
-gltforge-unity/    # #[repr(C)] P/Invoke bindings for Unity
-gltforge-python/   # PyO3 bindings (Blender addon)
-gltforge-wasm/     # wasm-bindgen bindings
-gltforge-cli/      # command line tooling
-```
+| Crate | Description | Status |
+|---|---|---|
+| `gltforge` | Core parser and schema types | Early development |
+| `gltforge-cli` | `gltforge inspect` command-line tool | Early development |
+| `gltforge-unity` | `#[repr(C)]` P/Invoke bindings for Unity | Early development |
+| `gltforge-python` | PyO3 bindings (Blender addon) | Planned |
+| `gltforge-wasm` | wasm-bindgen bindings | Planned |
 
 ## Usage
 
 ```toml
 [dependencies]
-gltforge = "0.1"
+gltforge = "0.0.3"
 ```
 
 ```rust
-use gltforge::{GltfPipeline, ExtensionRegistry};
+use std::path::Path;
+use gltforge::parser;
+use gltforge::schema::Gltf;
 
-let registry = ExtensionRegistry::new()
-    .register::<MyCustomExtension>();
+// Parse a .gltf file
+let json = std::fs::read_to_string("model.gltf")?;
+let gltf: Gltf = parser::parse(&json)?;
 
-let pipeline = GltfPipeline::new(registry);
-let mut stream = pipeline.load_stream("model.glb").await?;
+// Load external binary buffers
+let buffers = parser::load_buffers(&gltf, Path::new("."))?;
 
-while let Some(event) = stream.next().await {
-    match event {
-        GltfLoadEvent::MeshProcessed { index, name } => { /* hand off to renderer */ }
-        GltfLoadEvent::TextureDecoded { index, .. } => { /* upload to GPU */ }
-        GltfLoadEvent::SceneReady(scene) => { /* final assembly */ }
-        GltfLoadEvent::Warning(w) => eprintln!("warn: {w}"),
-    }
-}
+// Resolve an accessor to raw bytes
+let accessors = gltf.accessors.as_deref().unwrap_or(&[]);
+let buffer_views = gltf.buffer_views.as_deref().unwrap_or(&[]);
+let bytes = parser::resolve_accessor(&accessors[0], buffer_views, &buffers)?;
 ```
 
-## Custom Extensions
+## CLI
 
-```rust
-pub struct MyExtension {
-    pub custom_value: f32,
-}
+```bash
+cargo install gltforge-cli
 
-impl GltfExtension for MyExtension {
-    const NAME: &'static str = "MY_custom_extension";
-
-    fn deserialize(
-        value: serde_json::Value,
-        ctx: &ExtensionContext,
-    ) -> Result<Self, ExtensionError> {
-        Ok(Self {
-            custom_value: value["customValue"].as_f64().unwrap_or(0.0) as f32,
-        })
-    }
-
-    fn serialize(&self) -> Result<serde_json::Value, ExtensionError> {
-        Ok(serde_json::json!({ "customValue": self.custom_value }))
-    }
-
-    fn validate(&self, ctx: &ValidationContext) -> Result<(), ExtensionError> {
-        if self.custom_value < 0.0 {
-            return Err(ExtensionError::invalid("customValue must be non-negative"));
-        }
-        Ok(())
-    }
-}
-
-// Access your extension data after load — it's always there
-let ext = node.extensions.get::<MyExtension>();
+gltforge inspect model.gltf
+gltforge inspect model.gltf --mesh
 ```
 
-## Platform Bindings
+```
+glTF 2.0
+scenes:      1
+nodes:       1
+meshes:      1
+accessors:   2
+buffer views:2
+buffers:     1
 
-### Unity (C#)
+mesh 0: Triangle
+  primitive 0  [TRIANGLES]
+    indices:  accessor 0   SCALAR  UNSIGNED_SHORT  3
+    POSITION  accessor 1   VEC3    FLOAT           3
+```
+
+## Unity
+
+`gltforge-unity` compiles to a native plugin (`gltforge_unity.dll`) and exposes a P/Invoke API. Drop the DLL into `Assets/Plugins/x86_64/` and import meshes at runtime:
 
 ```csharp
-[DllImport("gltforge", CallingConvention = CallingConvention.Cdecl)]
-private static extern GltfError ProcessGltf(byte[] data, uint length, out GltfResult result);
+var handle = GltforgeNative.gltforge_load_mesh(path, nodeIndex);
 
-[DllImport("gltforge", CallingConvention = CallingConvention.Cdecl)]
-private static extern void FreeGltfResult(ref GltfResult result);
+uint posLen;
+float[] pos = new float[posLen];
+Marshal.Copy(GltforgeNative.gltforge_mesh_positions(handle, out posLen), pos, 0, (int)posLen);
+
+uint submeshCount = GltforgeNative.gltforge_mesh_submesh_count(handle);
+// ... SetTriangles per submesh
+
+GltforgeNative.gltforge_mesh_release(handle);
 ```
 
-### Python / Blender
-
-```python
-import gltforge
-
-registry = gltforge.ExtensionRegistry()
-registry.register(MyExtension())
-
-doc = gltforge.Document.from_path("model.glb", registry)
-```
+Coordinates are converted from glTF's right-handed system to Unity's left-handed system (X negated, winding reversed). Index format (`UInt16`/`UInt32`) is selected automatically based on vertex count.
 
 ## Roadmap
 
-- [ ] Core JSON parse + validation
+- [x] glTF 2.0 schema types
+- [x] JSON parser + buffer loading
+- [x] Accessor resolution
+- [x] CLI inspector
+- [x] Unity P/Invoke bindings (positions, indices, submeshes, names)
+- [ ] Node transforms (translation, rotation, scale)
+- [ ] Normals, UVs, tangents
+- [ ] Scene graph traversal
 - [ ] GLB binary chunk handling
-- [ ] Accessor + bufferView resolution
-- [ ] Mesh processing (tangents, meshopt, quantization)
-- [ ] Skinning + animation baking
 - [ ] Extension registry + typed dispatch
 - [ ] `KHR_draco_mesh_compression`
 - [ ] `EXT_meshopt_compression`
-- [ ] `KHR_texture_basisu`
-- [ ] Unity P/Invoke bindings
 - [ ] PyO3 / Blender addon
 - [ ] WASM bindings
-- [ ] Protobuf disk cache layer
 
 ## License
 
