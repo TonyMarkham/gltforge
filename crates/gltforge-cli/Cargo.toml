@@ -1,0 +1,15 @@
+[package]
+name = "gltforge-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line tooling for glTF 2.0 assets"
+
+[[bin]]
+name = "gltforge"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+gltforge = { workspace = true }

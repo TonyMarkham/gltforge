@@ -1,6 +1,8 @@
 [workspace]
 members = [
-    "crates/gltforge"
+    "crates/gltforge",
+    "crates/gltforge-cli",
+    "crates/gltforge-unity",
 ]
 resolver = "3"
 
@@ -12,7 +14,9 @@ repository = "https://github.com/TonyMarkham/gltforge"
 description = "A glTF 2.0 toolkit built for extensibility"
 
 [workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
 error-location = { version = "0.1.0" }
+gltforge = { path = "crates/gltforge" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149" }
 thiserror = { version = "2.0.18" }

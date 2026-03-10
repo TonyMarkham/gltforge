@@ -45,6 +45,17 @@ impl TryFrom<u32> for ComponentType {
     }
 }
 
+impl ComponentType {
+    /// The size in bytes of a single component of this type.
+    pub fn byte_size(self) -> usize {
+        match self {
+            Self::Byte | Self::UnsignedByte => 1,
+            Self::Short | Self::UnsignedShort => 2,
+            Self::UnsignedInt | Self::Float => 4,
+        }
+    }
+}
+
 impl From<ComponentType> for u32 {
     fn from(v: ComponentType) -> u32 {
         match v {

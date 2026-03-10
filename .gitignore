@@ -20,6 +20,3 @@ Cargo.lock
 # OS generated
 .DS_Store
 Thumbs.db
-
-# Samples
-.samples/

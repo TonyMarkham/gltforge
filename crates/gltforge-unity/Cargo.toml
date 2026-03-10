@@ -1,0 +1,15 @@
+[package]
+name = "gltforge-unity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unity native plugin bindings for gltforge"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+error-location = { workspace = true }
+gltforge = { workspace = true }
+thiserror = { workspace = true }
