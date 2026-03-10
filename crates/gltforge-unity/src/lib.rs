@@ -1,5 +1,6 @@
 pub mod convert;
 pub mod error;
+pub(crate) mod gltf_primitive_data;
 pub mod unity_gltf;
 pub mod unity_indices;
 pub mod unity_mesh;

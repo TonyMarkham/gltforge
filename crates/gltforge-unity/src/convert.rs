@@ -7,6 +7,7 @@ use std::{collections::HashMap, panic::Location};
 
 use crate::{
     error::{ConvertError, ConvertResult},
+    gltf_primitive_data::GltfPrimitiveData,
     unity_gltf::UnityGltf,
     unity_indices::UnityIndices,
     unity_mesh::UnityMesh,
@@ -65,26 +66,38 @@ pub fn build_unity_gltf(
     for (mesh_idx, mesh) in gltf.meshes.as_deref().unwrap_or(&[]).iter().enumerate() {
         // --- First pass: resolve each primitive's positions and wound indices ---
 
-        let mut prim_positions: Vec<Vec<[f32; 3]>> = Vec::new();
-        let mut prim_indices: Vec<Vec<u32>> = Vec::new();
+        let mut prims: Vec<GltfPrimitiveData> = Vec::new();
 
         for prim in &mesh.primitives {
-            let (positions, wound) = resolve_primitive(prim, accessors, bvs, buffers)?;
-            prim_positions.push(positions);
-            prim_indices.push(wound);
+            prims.push(resolve_primitive(prim, accessors, bvs, buffers)?);
         }
 
         // --- Second pass: merge vertices, offset indices, pick format --------
 
-        let total_verts: usize = prim_positions.iter().map(|p| p.len()).sum();
+        let total_verts: usize = prims.iter().map(|p| p.positions.len()).sum();
         let use_u32 = total_verts > 65535;
+        let all_have_normals = prims.iter().all(|p| p.normals.is_some());
 
         let mut vertices: Vec<[f32; 3]> = Vec::with_capacity(total_verts);
-        let mut sub_meshes: Vec<UnitySubMesh> = Vec::with_capacity(prim_positions.len());
+        let mut normals: Vec<[f32; 3]> = if all_have_normals {
+            Vec::with_capacity(total_verts)
+        } else {
+            Vec::new()
+        };
+        let mut sub_meshes: Vec<UnitySubMesh> = Vec::with_capacity(prims.len());
 
-        for (positions, wound) in prim_positions.into_iter().zip(prim_indices) {
+        for GltfPrimitiveData {
+            positions,
+            normals: prim_norms,
+            wound,
+        } in prims
+        {
             let base = vertices.len() as u32;
             vertices.extend_from_slice(&positions);
+
+            if let Some(n) = prim_norms {
+                normals.extend_from_slice(&n);
+            }
 
             let indices = if use_u32 {
                 UnityIndices::U32(wound.into_iter().map(|i| i + base).collect())
@@ -102,6 +115,7 @@ pub fn build_unity_gltf(
             UnityMesh {
                 name,
                 vertices,
+                normals,
                 sub_meshes,
             },
         );
@@ -115,14 +129,14 @@ pub fn build_unity_gltf(
     })
 }
 
-/// Resolve a single glTF primitive into left-handed positions and wound indices.
+/// Resolve a single glTF primitive into left-handed positions, optional normals, and wound indices.
 #[track_caller]
 fn resolve_primitive(
     prim: &MeshPrimitive,
     accessors: &[gltforge::schema::Accessor],
     bvs: &[gltforge::schema::BufferView],
     buffers: &[Vec<u8>],
-) -> ConvertResult<(Vec<[f32; 3]>, Vec<u32>)> {
+) -> ConvertResult<GltfPrimitiveData> {
     if prim.mode != MeshPrimitiveMode::Triangles {
         return Err(ConvertError::UnsupportedPrimitiveMode {
             mode: prim.mode,
@@ -196,7 +210,41 @@ fn resolve_primitive(
         .flat_map(|tri| [tri[0], tri[2], tri[1]])
         .collect();
 
-    Ok((positions, wound))
+    // ---- normals (optional) -------------------------------------------------
+
+    let normals = if let Some(&norm_id) = prim.attributes.get("NORMAL") {
+        let norm_acc = accessors.get(norm_id as usize).ok_or_else(|| {
+            ConvertError::PositionAccessorOutOfRange {
+                location: ErrorLocation::from(Location::caller()),
+            }
+        })?;
+
+        let norm_bytes =
+            resolve_accessor(norm_acc, bvs, buffers).map_err(|e| ConvertError::Resolve {
+                source: e,
+                location: ErrorLocation::from(Location::caller()),
+            })?;
+
+        Some(
+            norm_bytes
+                .chunks_exact(12)
+                .map(|c| {
+                    let x = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                    let y = f32::from_le_bytes([c[4], c[5], c[6], c[7]]);
+                    let z = f32::from_le_bytes([c[8], c[9], c[10], c[11]]);
+                    [-x, y, z]
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
+
+    Ok(GltfPrimitiveData {
+        positions,
+        normals,
+        wound,
+    })
 }
 
 /// Decode raw index bytes into a flat `Vec<u32>` regardless of source format.

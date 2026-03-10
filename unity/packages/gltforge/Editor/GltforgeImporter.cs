@@ -99,12 +99,28 @@ namespace Gltforge.Editor
 
             uint fmt = GltforgeNative.gltforge_mesh_index_format(handle, meshIdx);
 
+            // ---- normals (optional) -----------------------------------------
+
+            IntPtr normPtr = GltforgeNative.gltforge_mesh_normals(handle, meshIdx, out uint normFloatCount);
+            Vector3[] normals = null;
+            if (normPtr != IntPtr.Zero && normFloatCount > 0)
+            {
+                float[] normFloats = new float[normFloatCount];
+                Marshal.Copy(normPtr, normFloats, 0, (int)normFloatCount);
+                normals = new Vector3[normFloatCount / 3];
+                for (int i = 0; i < normals.Length; i++)
+                    normals[i] = new Vector3(normFloats[i * 3], normFloats[i * 3 + 1], normFloats[i * 3 + 2]);
+            }
+
             var mesh = new Mesh
             {
                 name        = meshName,
                 indexFormat = fmt == 32 ? IndexFormat.UInt32 : IndexFormat.UInt16,
                 vertices    = vertices,
             };
+
+            if (normals != null)
+                mesh.normals = normals;
 
             // ---- sub-meshes -------------------------------------------------
 
