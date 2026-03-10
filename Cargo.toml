@@ -9,5 +9,6 @@ version = "0.0.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/TonyMarkham/gltforge"
+description = "A glTF 2.0 toolkit built for extensibility"
 
 [workspace.dependencies]
