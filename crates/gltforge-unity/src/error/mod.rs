@@ -4,30 +4,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ConvertError {
-    #[error("no nodes in document {location}")]
-    NoNodes { location: ErrorLocation },
-
-    #[error("node index {index} out of range {location}")]
-    NodeIndexOutOfRange {
-        index: usize,
-        location: ErrorLocation,
-    },
-
-    #[error("node {index} has no mesh {location}")]
-    NodeHasNoMesh {
-        index: usize,
-        location: ErrorLocation,
-    },
-
-    #[error("no meshes in document {location}")]
-    NoMeshes { location: ErrorLocation },
-
-    #[error("mesh index {index} out of range {location}")]
-    MeshIndexOutOfRange {
-        index: usize,
-        location: ErrorLocation,
-    },
-
     #[error("unsupported primitive mode {mode:?} {location}")]
     UnsupportedPrimitiveMode {
         mode: MeshPrimitiveMode,
