@@ -13,9 +13,9 @@
 
 | Crate | Description | Status |
 |---|---|---|
-| `gltforge` | Core parser and schema types | Early development |
-| `gltforge-cli` | `gltforge inspect` command-line tool | Early development |
-| `gltforge-unity` | `#[repr(C)]` P/Invoke bindings for Unity | Early development |
+| `gltforge` | Core parser and schema types | Active development |
+| `gltforge-cli` | `gltforge inspect` command-line tool | Active development |
+| `gltforge-unity` | `#[repr(C)]` P/Invoke bindings for Unity | Active development |
 | `gltforge-python` | PyO3 bindings (Blender addon) | Planned |
 | `gltforge-wasm` | wasm-bindgen bindings | Planned |
 
@@ -23,7 +23,7 @@
 
 ```toml
 [dependencies]
-gltforge = "0.0.3"
+gltforge = "0.0.4"
 ```
 
 ```rust
@@ -49,55 +49,80 @@ let bytes = parser::resolve_accessor(&accessors[0], buffer_views, &buffers)?;
 ```bash
 cargo install gltforge-cli
 
+# Summary
 gltforge inspect model.gltf
-gltforge inspect model.gltf --mesh
+
+# With node hierarchy and mesh details
+gltforge inspect model.gltf --nodes --mesh
+
+# Dump raw POSITION vertices for mesh 0 (glTF coordinate space)
+gltforge inspect model.gltf --dump-verts 0
 ```
 
 ```
 glTF 2.0
+generator: Khronos Blender glTF 2.0 exporter
 scenes:      1
-nodes:       1
+nodes:       22
 meshes:      1
-accessors:   2
-buffer views:2
+accessors:   83
+buffer views:8
 buffers:     1
+materials:   1
+textures:    1
+animations:  1
+skins:       1
 
-mesh 0: Triangle
+node 0: Z_UP
+  matrix:
+    [  1.0000    0.0000    0.0000    0.0000]
+    [  0.0000    0.0000    1.0000    0.0000]
+    [  0.0000   -1.0000    0.0000    0.0000]
+    [  0.0000    0.0000    0.0000    1.0000]
+  node 1: Armature
+    node 3: Skeleton_torso_joint_1
+      translation: [0.0000, 0.0050, 0.6790]
+      rotation:    [0.0000, -0.0378, 0.0000, -0.9993]  (xyzw)
+      scale:       [1.0000, 1.0000, 1.0000]
+
+mesh 0: Cesium_Man
   primitive 0  [TRIANGLES]
-    indices:  accessor 0   SCALAR  UNSIGNED_SHORT  3
-    POSITION  accessor 1   VEC3    FLOAT           3
+    indices:  accessor 0    SCALAR  UNSIGNED_SHORT  14016
+    JOINTS_0  accessor 1    VEC4    UNSIGNED_SHORT  3273
+    NORMAL    accessor 2    VEC3    FLOAT           3273
+    POSITION  accessor 3    VEC3    FLOAT           3273
+    TEXCOORD_0 accessor 4   VEC2    FLOAT           3273
+    WEIGHTS_0 accessor 5    VEC4    FLOAT           3273
 ```
 
 ## Unity
 
-`gltforge-unity` compiles to a native plugin (`gltforge_unity.dll`) and exposes a P/Invoke API. Drop the DLL into `Assets/Plugins/x86_64/` and import meshes at runtime:
+`gltforge-unity` compiles to a native plugin (`gltforge_unity.dll`) and exposes a P/Invoke API. A `ScriptedImporter` lets you drag `.gltf` files directly into the Unity project panel.
 
-```csharp
-var handle = GltforgeNative.gltforge_load_mesh(path, nodeIndex);
+The importer builds the full scene graph as a prefab hierarchy, with mesh geometry and transforms ready to use. Coordinates are converted from glTF's right-handed system to Unity's left-handed system (X negated, winding reversed). Index format (`UInt16`/`UInt32`) is selected automatically based on vertex count.
 
-uint posLen;
-float[] pos = new float[posLen];
-Marshal.Copy(GltforgeNative.gltforge_mesh_positions(handle, out posLen), pos, 0, (int)posLen);
+**What's imported today:**
 
-uint submeshCount = GltforgeNative.gltforge_mesh_submesh_count(handle);
-// ... SetTriangles per submesh
-
-GltforgeNative.gltforge_mesh_release(handle);
-```
-
-Coordinates are converted from glTF's right-handed system to Unity's left-handed system (X negated, winding reversed). Index format (`UInt16`/`UInt32`) is selected automatically based on vertex count.
+| Data | Support |
+|---|---|
+| Scene graph (nodes, hierarchy) | ✅ |
+| Node transforms (TRS and matrix) | ✅ |
+| Meshes (positions, normals, tangents, UVs) | ✅ |
+| Sub-meshes (one per glTF primitive) | ✅ |
+| Materials / textures | Planned |
+| Skinning / animations | Planned |
 
 ## Roadmap
 
 - [x] glTF 2.0 schema types
 - [x] JSON parser + buffer loading
 - [x] Accessor resolution
-- [x] CLI inspector
-- [x] Unity P/Invoke bindings (positions, indices, submeshes, names)
-- [ ] Node transforms (translation, rotation, scale)
-- [ ] Normals, UVs, tangents
-- [ ] Scene graph traversal
+- [x] CLI inspector (`--nodes`, `--mesh`, `--dump-verts`)
+- [x] Unity P/Invoke bindings — scene graph, node transforms, meshes, normals, tangents, UVs, sub-meshes
+- [x] Coordinate system conversion (glTF right-handed → Unity left-handed)
 - [ ] GLB binary chunk handling
+- [ ] Materials and textures
+- [ ] Skinning (`JOINTS_0` / `WEIGHTS_0`) and animations
 - [ ] Extension registry + typed dispatch
 - [ ] `KHR_draco_mesh_compression`
 - [ ] `EXT_meshopt_compression`

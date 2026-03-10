@@ -12,6 +12,7 @@ use crate::{
     unity_indices::UnityIndices,
     unity_mesh::UnityMesh,
     unity_node::UnityNode,
+    unity_node_transform::UnityNodeTransform,
     unity_submesh::UnitySubMesh,
 };
 
@@ -53,6 +54,7 @@ pub fn build_unity_gltf(
                 name: node.name.clone().unwrap_or_else(|| idx.to_string()),
                 children,
                 mesh_indices,
+                transform: node_transform(node),
             },
         );
     }
@@ -342,6 +344,103 @@ fn resolve_primitive(
         uvs,
         wound,
     })
+}
+
+/// Build a [`UnityNodeTransform`] from a glTF node, converting to Unity's left-handed coordinate system.
+///
+/// Handles both the `matrix` form (column-major 4×4, decomposed into TRS) and the
+/// separate `translation`/`rotation`/`scale` properties. Missing components default to identity.
+fn node_transform(node: &gltforge::schema::Node) -> UnityNodeTransform {
+    if let Some(m) = &node.matrix {
+        mat4_to_node_transform(m)
+    } else {
+        let position = node
+            .translation
+            .map(|t| [-t[0], t[1], t[2]])
+            .unwrap_or([0.0, 0.0, 0.0]);
+        let rotation = node
+            .rotation
+            .map(|r| [-r[0], r[1], r[2], -r[3]])
+            .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        let scale = node.scale.unwrap_or([1.0, 1.0, 1.0]);
+        UnityNodeTransform {
+            position,
+            rotation,
+            scale,
+        }
+    }
+}
+
+/// Decompose a glTF column-major 4×4 matrix into TRS and convert to Unity left-handed space.
+fn mat4_to_node_transform(m: &[f32; 16]) -> UnityNodeTransform {
+    // glTF matrix is column-major: column k starts at index k*4.
+    // Translation is the last column.
+    let tx = m[12];
+    let ty = m[13];
+    let tz = m[14];
+
+    // Scale = length of each basis column (columns 0, 1, 2).
+    let sx = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
+    let sy = (m[4] * m[4] + m[5] * m[5] + m[6] * m[6]).sqrt();
+    let sz = (m[8] * m[8] + m[9] * m[9] + m[10] * m[10]).sqrt();
+
+    // Rotation matrix: normalize each basis column.
+    // Row-major indexing: r[row][col] = m[col*4 + row] / scale[col]
+    let r00 = m[0] / sx;
+    let r10 = m[1] / sx;
+    let r20 = m[2] / sx;
+    let r01 = m[4] / sy;
+    let r11 = m[5] / sy;
+    let r21 = m[6] / sy;
+    let r02 = m[8] / sz;
+    let r12 = m[9] / sz;
+    let r22 = m[10] / sz;
+
+    let [qx, qy, qz, qw] = rot_mat_to_quat([r00, r01, r02, r10, r11, r12, r20, r21, r22]);
+
+    UnityNodeTransform {
+        position: [-tx, ty, tz],
+        rotation: [-qx, qy, qz, -qw],
+        scale: [sx, sy, sz],
+    }
+}
+
+/// Convert a 3×3 rotation matrix (row-major, packed as `[r00,r01,r02, r10,r11,r12, r20,r21,r22]`)
+/// to a unit quaternion `[x, y, z, w]`.
+///
+/// Uses Shepperd's method for numerical stability.
+fn rot_mat_to_quat([r00, r01, r02, r10, r11, r12, r20, r21, r22]: [f32; 9]) -> [f32; 4] {
+    let trace = r00 + r11 + r22;
+
+    if trace > 0.0 {
+        let s = (trace + 1.0).sqrt() * 2.0; // s = 4w
+        let w = 0.25 * s;
+        let x = (r21 - r12) / s;
+        let y = (r02 - r20) / s;
+        let z = (r10 - r01) / s;
+        [x, y, z, w]
+    } else if r00 > r11 && r00 > r22 {
+        let s = (1.0 + r00 - r11 - r22).sqrt() * 2.0; // s = 4x
+        let w = (r21 - r12) / s;
+        let x = 0.25 * s;
+        let y = (r01 + r10) / s;
+        let z = (r02 + r20) / s;
+        [x, y, z, w]
+    } else if r11 > r22 {
+        let s = (1.0 + r11 - r00 - r22).sqrt() * 2.0; // s = 4y
+        let w = (r02 - r20) / s;
+        let x = (r01 + r10) / s;
+        let y = 0.25 * s;
+        let z = (r12 + r21) / s;
+        [x, y, z, w]
+    } else {
+        let s = (1.0 + r22 - r00 - r11).sqrt() * 2.0; // s = 4z
+        let w = (r10 - r01) / s;
+        let x = (r02 + r20) / s;
+        let y = (r12 + r21) / s;
+        let z = 0.25 * s;
+        [x, y, z, w]
+    }
 }
 
 /// Decode raw index bytes into a flat `Vec<u32>` regardless of source format.

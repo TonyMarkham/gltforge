@@ -198,13 +198,26 @@ namespace Gltforge.Editor
             var go = new GameObject(nodeName);
             go.transform.SetParent(parent, worldPositionStays: false);
 
+            float[] t = new float[10];
+            try
+            {
+                var pin = GCHandle.Alloc(t, GCHandleType.Pinned);
+                try   { GltforgeNative.gltforge_node_transform(handle, nodeIdx, pin.AddrOfPinnedObject()); }
+                finally { pin.Free(); }
+            }
+            catch (Exception e)
+            {
+                ctx.LogImportWarning($"[gltforge] transform error on node {nodeIdx}: {e.Message}");
+            }
+            go.transform.localPosition = new Vector3(t[0], t[1], t[2]);
+            go.transform.localRotation = new Quaternion(t[3], t[4], t[5], t[6]);
+            go.transform.localScale    = new Vector3(t[7], t[8], t[9]);
+
             asset.nodes.Add(new GltforgeAsset.NodeEntry
             {
                 nodeIndex  = (int)nodeIdx,
                 gameObject = go,
             });
-
-            ctx.AddObjectToAsset($"node_{nodeIdx}", go);
 
             // Attach meshes referenced by this node.
             uint meshRefCount = GltforgeNative.gltforge_node_mesh_count(handle, nodeIdx);

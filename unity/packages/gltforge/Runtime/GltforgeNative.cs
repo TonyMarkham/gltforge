@@ -27,6 +27,7 @@ namespace Gltforge
         [DllImport(Lib)] public static extern uint   gltforge_node_child(IntPtr handle, uint nodeIdx, uint slot);
         [DllImport(Lib)] public static extern uint   gltforge_node_mesh_count(IntPtr handle, uint nodeIdx);
         [DllImport(Lib)] public static extern uint   gltforge_node_mesh_index(IntPtr handle, uint nodeIdx, uint slot);
+        [DllImport(Lib)] public static extern void   gltforge_node_transform(IntPtr handle, uint nodeIdx, IntPtr transform);
 
         // ---- meshes ---------------------------------------------------------
 

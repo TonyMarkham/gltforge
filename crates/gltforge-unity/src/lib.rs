@@ -5,6 +5,7 @@ pub mod unity_gltf;
 pub mod unity_indices;
 pub mod unity_mesh;
 pub mod unity_node;
+pub mod unity_node_transform;
 pub mod unity_scene;
 pub mod unity_submesh;
 
@@ -20,7 +21,9 @@ pub use unity_mesh::{
 pub use unity_node::{
     UnityNode, gltforge_node_child, gltforge_node_child_count, gltforge_node_count,
     gltforge_node_mesh_count, gltforge_node_mesh_index, gltforge_node_name,
+    gltforge_node_transform,
 };
+pub use unity_node_transform::UnityNodeTransform;
 pub use unity_scene::{gltforge_root_node_count, gltforge_root_node_index, gltforge_scene_name};
 pub use unity_submesh::{
     UnitySubMesh, gltforge_mesh_submesh_count, gltforge_mesh_submesh_indices_u16,

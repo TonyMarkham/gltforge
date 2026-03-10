@@ -13,4 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { workspace = true }
+error-location = { workspace = true }
 gltforge = { workspace = true }
+thiserror = { workspace = true }
