@@ -1,0 +1,22 @@
+# Rust build artifacts
+/target
+
+# Cargo.lock is not committed for libraries (remove this line for binaries/applications)
+Cargo.lock
+
+# IDE - JetBrains (RustRover, CLion, etc.)
+# The .idea/ dir has its own inner .gitignore, so you can remove this line
+# if you want to share project-level IDE settings with teammates.
+.idea/
+
+# IDE - VS Code
+.vscode/
+
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# OS generated
+.DS_Store
+Thumbs.db
