@@ -43,9 +43,41 @@ namespace Gltforge
 
         // ---- sub-meshes -----------------------------------------------------
 
-        [DllImport(Lib)] public static extern uint   gltforge_mesh_submesh_count(IntPtr handle, uint meshIdx);
+        [DllImport(Lib)] public static extern uint  gltforge_mesh_submesh_count(IntPtr handle, uint meshIdx);
         [DllImport(Lib)] public static extern IntPtr gltforge_mesh_submesh_indices_u16(IntPtr handle, uint meshIdx, uint submesh, out uint len);
         [DllImport(Lib)] public static extern IntPtr gltforge_mesh_submesh_indices_u32(IntPtr handle, uint meshIdx, uint submesh, out uint len);
+        [DllImport(Lib)] public static extern int   gltforge_mesh_submesh_material(IntPtr handle, uint meshIdx, uint submesh);
+
+        // ---- images ---------------------------------------------------------
+
+        [DllImport(Lib)] public static extern uint   gltforge_image_count(IntPtr handle);
+        [DllImport(Lib)] public static extern IntPtr gltforge_image_name(IntPtr handle, uint imageIdx, out uint len);
+        [DllImport(Lib)] public static extern IntPtr gltforge_image_uri(IntPtr handle, uint imageIdx, out uint len);
+
+        // ---- GLTF/PbrMetallicRoughness materials ----------------------------
+
+        [DllImport(Lib)] public static extern uint   gltforge_pbr_metallic_roughness_count(IntPtr handle);
+        [DllImport(Lib)] public static extern IntPtr gltforge_pbr_metallic_roughness_name(IntPtr handle, uint matIdx, out uint len);
+
+        // Texture slots — image index, or -1 if absent.
+        [DllImport(Lib)] public static extern int gltforge_pbr_metallic_roughness_base_color_texture(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern int gltforge_pbr_metallic_roughness_metallic_roughness_texture(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern int gltforge_pbr_metallic_roughness_normal_texture(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern int gltforge_pbr_metallic_roughness_occlusion_texture(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern int gltforge_pbr_metallic_roughness_emissive_texture(IntPtr handle, uint matIdx);
+
+        // Scalar factors.
+        [DllImport(Lib)] public static extern void  gltforge_pbr_metallic_roughness_base_color_factor(IntPtr handle, uint matIdx, IntPtr outFloats);
+        [DllImport(Lib)] public static extern float gltforge_pbr_metallic_roughness_metallic_factor(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern float gltforge_pbr_metallic_roughness_roughness_factor(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern float gltforge_pbr_metallic_roughness_normal_scale(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern float gltforge_pbr_metallic_roughness_occlusion_strength(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern void  gltforge_pbr_metallic_roughness_emissive_factor(IntPtr handle, uint matIdx, IntPtr outFloats);
+
+        // Rendering mode.
+        [DllImport(Lib)] public static extern float gltforge_pbr_metallic_roughness_alpha_cutoff(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern uint  gltforge_pbr_metallic_roughness_alpha_mode(IntPtr handle, uint matIdx);
+        [DllImport(Lib)] public static extern uint  gltforge_pbr_metallic_roughness_cull(IntPtr handle, uint matIdx);
 
         // ---- helpers --------------------------------------------------------
 

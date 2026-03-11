@@ -6,6 +6,10 @@ pub struct UnitySubMesh {
     /// Triangle indices with winding order reversed for Unity's left-handed convention.
     /// Absolute offsets into the parent [`UnityMesh::vertices`] array.
     pub indices: UnityIndices,
+
+    /// The glTF material index for this sub-mesh, if the primitive referenced one.
+    /// Maps into [`crate::unity_gltf::UnityGltf::pbr_metallic_roughness`].
+    pub material_index: Option<u32>,
 }
 
 /// Return the number of sub-meshes in mesh `mesh_idx`.
@@ -89,4 +93,24 @@ pub unsafe extern "C" fn gltforge_mesh_submesh_indices_u32(
             std::ptr::null()
         }
     }
+}
+
+/// Return the `GLTF/PbrMetallicRoughness` material index for sub-mesh `submesh` of mesh
+/// `mesh_idx`, or `-1` if the primitive had no material.
+/// The index maps into [`crate::unity_gltf::UnityGltf::pbr_metallic_roughness`].
+///
+/// # Safety
+/// `ptr` must be a valid, non-null handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gltforge_mesh_submesh_material(
+    ptr: *const UnityGltf,
+    mesh_idx: u32,
+    submesh: u32,
+) -> i32 {
+    unsafe { &*ptr }
+        .meshes
+        .get(&mesh_idx)
+        .and_then(|m| m.sub_meshes.get(submesh as usize))
+        .and_then(|s| s.material_index)
+        .map_or(-1, |i| i as i32)
 }

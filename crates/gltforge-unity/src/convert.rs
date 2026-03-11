@@ -1,7 +1,10 @@
 use error_location::ErrorLocation;
 use gltforge::{
     parser::resolve_accessor,
-    schema::{AccessorComponentType, AccessorType, Gltf, MeshPrimitive, MeshPrimitiveMode},
+    schema::{
+        AccessorComponentType, AccessorType, Gltf, MaterialAlphaMode, MeshPrimitive,
+        MeshPrimitiveMode,
+    },
 };
 use std::{collections::HashMap, panic::Location};
 
@@ -9,10 +12,14 @@ use crate::{
     error::{ConvertError, ConvertResult},
     gltf_primitive_data::GltfPrimitiveData,
     unity_gltf::UnityGltf,
+    unity_image::UnityImage,
     unity_indices::UnityIndices,
     unity_mesh::UnityMesh,
     unity_node::UnityNode,
     unity_node_transform::UnityNodeTransform,
+    unity_pbr_metallic_roughness::{
+        ALPHA_MODE_BLEND, ALPHA_MODE_MASK, ALPHA_MODE_OPAQUE, UnityPbrMetallicRoughness,
+    },
     unity_submesh::UnitySubMesh,
 };
 
@@ -59,6 +66,102 @@ pub fn build_unity_gltf(
         );
     }
 
+    // ---- images -------------------------------------------------------------
+
+    let images: HashMap<u32, UnityImage> = gltf
+        .images
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .enumerate()
+        .map(|(idx, img)| {
+            (
+                idx as u32,
+                UnityImage {
+                    name: img.name.clone().unwrap_or_else(|| idx.to_string()),
+                    uri: img.uri.clone(),
+                },
+            )
+        })
+        .collect();
+
+    // ---- PBR materials ------------------------------------------------------
+
+    let schema_textures = gltf.textures.as_deref().unwrap_or(&[]);
+
+    // Resolve a TextureInfo index (texture index) to an image index.
+    let resolve_image =
+        |tex_idx: u32| -> Option<u32> { schema_textures.get(tex_idx as usize)?.source };
+
+    let pbr_metallic_roughness: HashMap<u32, UnityPbrMetallicRoughness> = gltf
+        .materials
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .enumerate()
+        .map(|(idx, mat)| {
+            let pbr = mat.pbr_metallic_roughness.as_ref();
+
+            let alpha_mode = match mat.alpha_mode {
+                MaterialAlphaMode::Opaque => ALPHA_MODE_OPAQUE,
+                MaterialAlphaMode::Mask => ALPHA_MODE_MASK,
+                MaterialAlphaMode::Blend => ALPHA_MODE_BLEND,
+            };
+
+            (
+                idx as u32,
+                UnityPbrMetallicRoughness {
+                    name: mat.name.clone().unwrap_or_else(|| idx.to_string()),
+
+                    base_color_texture: pbr
+                        .and_then(|p| p.base_color_texture.as_ref())
+                        .and_then(|t| resolve_image(t.index)),
+
+                    metallic_roughness_texture: pbr
+                        .and_then(|p| p.metallic_roughness_texture.as_ref())
+                        .and_then(|t| resolve_image(t.index)),
+
+                    normal_texture: mat
+                        .normal_texture
+                        .as_ref()
+                        .and_then(|t| resolve_image(t.index)),
+
+                    occlusion_texture: mat
+                        .occlusion_texture
+                        .as_ref()
+                        .and_then(|t| resolve_image(t.index)),
+
+                    emissive_texture: mat
+                        .emissive_texture
+                        .as_ref()
+                        .and_then(|t| resolve_image(t.index)),
+
+                    base_color_factor: pbr
+                        .map(|p| p.base_color_factor)
+                        .unwrap_or([1.0, 1.0, 1.0, 1.0]),
+
+                    metallic_factor: pbr.map(|p| p.metallic_factor).unwrap_or(1.0),
+
+                    roughness_factor: pbr.map(|p| p.roughness_factor).unwrap_or(1.0),
+
+                    normal_scale: mat.normal_texture.as_ref().map(|t| t.scale).unwrap_or(1.0),
+
+                    occlusion_strength: mat
+                        .occlusion_texture
+                        .as_ref()
+                        .map(|t| t.strength)
+                        .unwrap_or(1.0),
+
+                    emissive_factor: mat.emissive_factor,
+
+                    alpha_cutoff: mat.alpha_cutoff,
+                    alpha_mode,
+                    double_sided: mat.double_sided,
+                },
+            )
+        })
+        .collect();
+
     // ---- meshes -------------------------------------------------------------
 
     let bvs = gltf.buffer_views.as_deref().unwrap_or(&[]);
@@ -103,13 +206,16 @@ pub fn build_unity_gltf(
             .collect();
         let mut sub_meshes: Vec<UnitySubMesh> = Vec::with_capacity(prims.len());
 
-        for GltfPrimitiveData {
-            positions,
-            normals: prim_norms,
-            tangents: prim_tangs,
-            uvs: prim_uvs,
-            wound,
-        } in prims
+        for (
+            prim_idx,
+            GltfPrimitiveData {
+                positions,
+                normals: prim_norms,
+                tangents: prim_tangs,
+                uvs: prim_uvs,
+                wound,
+            },
+        ) in prims.into_iter().enumerate()
         {
             let base = vertices.len() as u32;
             vertices.extend_from_slice(&positions);
@@ -134,7 +240,12 @@ pub fn build_unity_gltf(
                 UnityIndices::U16(wound.into_iter().map(|i| (i + base) as u16).collect())
             };
 
-            sub_meshes.push(UnitySubMesh { indices });
+            let material_index = mesh.primitives[prim_idx].material;
+
+            sub_meshes.push(UnitySubMesh {
+                indices,
+                material_index,
+            });
         }
 
         let name = mesh.name.clone().unwrap_or_else(|| mesh_idx.to_string());
@@ -157,6 +268,8 @@ pub fn build_unity_gltf(
         root_nodes,
         nodes,
         meshes,
+        images,
+        pbr_metallic_roughness,
     })
 }
 

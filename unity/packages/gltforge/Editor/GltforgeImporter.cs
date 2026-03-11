@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using UnityEditor;
 using UnityEditor.AssetImporters;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -11,9 +12,15 @@ namespace Gltforge.Editor
     [ScriptedImporter(3, "gltf")]
     public class GltforgeImporter : ScriptedImporter
     {
+        static Shader _pbrShader;
+        static Shader _pbrBlendShader;
+        static Shader PbrShader      => _pbrShader      ??= Shader.Find("Shader Graphs/glTF PBR Metallic Roughness");
+        static Shader PbrBlendShader => _pbrBlendShader ??= Shader.Find("Shader Graphs/glTF PBR Metallic Roughness Blend");
+
         public override void OnImportAsset(AssetImportContext ctx)
         {
             string absolutePath = Path.GetFullPath(ctx.assetPath);
+            string gltfDir      = Path.GetDirectoryName(absolutePath);
 
             IntPtr handle = GltforgeNative.gltforge_load(absolutePath);
             if (handle == IntPtr.Zero)
@@ -25,9 +32,16 @@ namespace Gltforge.Editor
             try
             {
                 var asset = ScriptableObject.CreateInstance<GltforgeAsset>();
-                asset.name   = GltforgeNative.ReadName(GltforgeNative.gltforge_scene_name(handle, out uint sceneNameLen), sceneNameLen);
-                asset.nodes  = new List<GltforgeAsset.NodeEntry>();
-                asset.meshes = new List<GltforgeAsset.MeshEntry>();
+                asset.name      = GltforgeNative.ReadName(GltforgeNative.gltforge_scene_name(handle, out uint sceneNameLen), sceneNameLen);
+                asset.nodes     = new List<GltforgeAsset.NodeEntry>();
+                asset.meshes    = new List<GltforgeAsset.MeshEntry>();
+                asset.textures  = new List<GltforgeAsset.TextureEntry>();
+                asset.materials = new List<GltforgeAsset.MaterialEntry>();
+
+                // Build textures, then materials (materials reference textures by index).
+                var normalMapIndices = CollectNormalMapIndices(handle);
+                var builtTextures    = BuildAllTextures(handle, gltfDir, normalMapIndices, asset, ctx);
+                var builtMaterials = BuildAllMaterials(handle, builtTextures, asset, ctx);
 
                 // Build all meshes up-front, deduplicated by glTF mesh index.
                 var builtMeshes = BuildAllMeshes(handle, asset, ctx);
@@ -40,7 +54,7 @@ namespace Gltforge.Editor
                 for (uint i = 0; i < rootCount; i++)
                 {
                     uint nodeIdx = GltforgeNative.gltforge_root_node_index(handle, i);
-                    TraverseNode(handle, nodeIdx, root.transform, asset, builtMeshes, ctx);
+                    TraverseNode(handle, nodeIdx, root.transform, asset, builtMeshes, builtMaterials, ctx);
                 }
 
                 ctx.AddObjectToAsset("asset", asset);
@@ -51,6 +65,192 @@ namespace Gltforge.Editor
             {
                 GltforgeNative.gltforge_release(handle);
             }
+        }
+
+        // ---- textures -------------------------------------------------------
+
+        /// <summary>
+        /// Returns the set of glTF image indices used as normal maps across all PBR materials.
+        /// These textures must be imported as <c>TextureImporterType.NormalMap</c>.
+        /// </summary>
+        static HashSet<uint> CollectNormalMapIndices(IntPtr handle)
+        {
+            var result = new HashSet<uint>();
+            uint matCount = GltforgeNative.gltforge_pbr_metallic_roughness_count(handle);
+            for (uint matIdx = 0; matIdx < matCount; matIdx++)
+            {
+                int idx = GltforgeNative.gltforge_pbr_metallic_roughness_normal_texture(handle, matIdx);
+                if (idx >= 0) result.Add((uint)idx);
+            }
+            return result;
+        }
+
+        static Dictionary<uint, Texture2D> BuildAllTextures(
+            IntPtr handle,
+            string gltfDir,
+            HashSet<uint> normalMapIndices,
+            GltforgeAsset asset,
+            AssetImportContext ctx)
+        {
+            var built = new Dictionary<uint, Texture2D>();
+            uint imageCount = GltforgeNative.gltforge_image_count(handle);
+
+            for (uint imageIdx = 0; imageIdx < imageCount; imageIdx++)
+            {
+                IntPtr uriPtr = GltforgeNative.gltforge_image_uri(handle, imageIdx, out uint uriLen);
+                if (uriPtr == IntPtr.Zero)
+                    continue; // Embedded buffer-view images not yet supported.
+
+                string uri          = GltforgeNative.ReadName(uriPtr, uriLen);
+                string absolutePath = Path.Combine(gltfDir, uri);
+                string assetPath    = AbsoluteToAssetPath(absolutePath);
+
+                // Ensure normal maps are imported with the correct texture type so Unity
+                // applies the right channel swizzle and compression.
+                bool isNormalMap = normalMapIndices.Contains(imageIdx);
+                EnsureTextureType(assetPath, isNormalMap
+                    ? TextureImporterType.NormalMap
+                    : TextureImporterType.Default);
+
+                Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                if (tex == null)
+                {
+                    ctx.LogImportWarning($"[gltforge] Could not load texture '{assetPath}' (image {imageIdx}).");
+                    continue;
+                }
+
+                ctx.DependsOnArtifact(AssetDatabase.GUIDFromAssetPath(assetPath));
+                built[imageIdx] = tex;
+
+                asset.textures.Add(new GltforgeAsset.TextureEntry
+                {
+                    imageIndex = (int)imageIdx,
+                    texture    = tex,
+                });
+            }
+
+            return built;
+        }
+
+        /// <summary>
+        /// Sets the <see cref="TextureImporter"/> type for <paramref name="assetPath"/> if it
+        /// doesn't already match <paramref name="type"/>.<br/>
+        /// When called during an AssetDatabase refresh (<see cref="EditorApplication.isUpdating"/>),
+        /// the settings are written and the reimport is deferred via
+        /// <see cref="EditorApplication.delayCall"/> so we don't load a stale in-flight asset.
+        /// <see cref="AssetImportContext.DependsOnArtifact"/> will then cascade the .gltf reimport
+        /// automatically once the texture finishes.
+        /// </summary>
+        static void EnsureTextureType(string assetPath, TextureImporterType type)
+        {
+            var ti = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+            if (ti == null || ti.textureType == type) return;
+            ti.textureType = type;
+            if (type == TextureImporterType.NormalMap)
+            {
+                ti.convertToNormalmap = false; // glTF normals are already encoded, not height maps.
+                ti.sRGBTexture        = false;
+            }
+            if (EditorApplication.isUpdating)
+            {
+                AssetDatabase.WriteImportSettingsIfDirty(assetPath);
+                EditorApplication.delayCall += () => AssetDatabase.ImportAsset(assetPath);
+            }
+            else
+            {
+                ti.SaveAndReimport();
+            }
+        }
+
+        // ---- materials ------------------------------------------------------
+
+        static Dictionary<uint, Material> BuildAllMaterials(
+            IntPtr handle,
+            Dictionary<uint, Texture2D> builtTextures,
+            GltforgeAsset asset,
+            AssetImportContext ctx)
+        {
+            var built = new Dictionary<uint, Material>();
+            uint matCount = GltforgeNative.gltforge_pbr_metallic_roughness_count(handle);
+
+            for (uint matIdx = 0; matIdx < matCount; matIdx++)
+            {
+                Material mat = BuildPbrMaterial(handle, matIdx, builtTextures);
+                built[matIdx] = mat;
+
+                asset.materials.Add(new GltforgeAsset.MaterialEntry
+                {
+                    materialIndex = (int)matIdx,
+                    material      = mat,
+                });
+
+                ctx.AddObjectToAsset($"mat_{matIdx}", mat);
+            }
+
+            return built;
+        }
+
+        static Material BuildPbrMaterial(
+            IntPtr handle,
+            uint matIdx,
+            Dictionary<uint, Texture2D> builtTextures)
+        {
+            string name = GltforgeNative.ReadName(
+                GltforgeNative.gltforge_pbr_metallic_roughness_name(handle, matIdx, out uint nameLen), nameLen)
+                ?? matIdx.ToString();
+
+            uint alphaMode = GltforgeNative.gltforge_pbr_metallic_roughness_alpha_mode(handle, matIdx);
+            var shader = alphaMode == 2 ? PbrBlendShader : PbrShader;
+            var mat = new Material(shader) { name = name };
+
+            // ── Textures ─────────────────────────────────────────────────────
+
+            Texture2D TryGetTex(int imageIdx) =>
+                imageIdx >= 0 && builtTextures.TryGetValue((uint)imageIdx, out var t) ? t : null;
+
+            var baseColorTex = TryGetTex(GltforgeNative.gltforge_pbr_metallic_roughness_base_color_texture(handle, matIdx));
+            if (baseColorTex != null)
+                mat.SetTexture("_BaseMap", baseColorTex);
+
+            var metallicRoughTex = TryGetTex(GltforgeNative.gltforge_pbr_metallic_roughness_metallic_roughness_texture(handle, matIdx));
+            if (metallicRoughTex != null)
+                mat.SetTexture("_MetallicRoughnessMap", metallicRoughTex);
+
+            var normalTex = TryGetTex(GltforgeNative.gltforge_pbr_metallic_roughness_normal_texture(handle, matIdx));
+            if (normalTex != null)
+                mat.SetTexture("_BumpMap", normalTex);
+
+            var occlusionTex = TryGetTex(GltforgeNative.gltforge_pbr_metallic_roughness_occlusion_texture(handle, matIdx));
+            if (occlusionTex != null)
+                mat.SetTexture("_OcclusionMap", occlusionTex);
+
+            var emissiveTex = TryGetTex(GltforgeNative.gltforge_pbr_metallic_roughness_emissive_texture(handle, matIdx));
+            if (emissiveTex != null)
+                mat.SetTexture("_EmissionMap", emissiveTex);
+
+            // ── Scalar factors ────────────────────────────────────────────────
+
+            var baseColorFactor = new float[4];
+            var pin = GCHandle.Alloc(baseColorFactor, GCHandleType.Pinned);
+            try   { GltforgeNative.gltforge_pbr_metallic_roughness_base_color_factor(handle, matIdx, pin.AddrOfPinnedObject()); }
+            finally { pin.Free(); }
+            mat.SetColor("_BaseColor", new Color(baseColorFactor[0], baseColorFactor[1], baseColorFactor[2], baseColorFactor[3]));
+
+            mat.SetFloat("_Metallic",           GltforgeNative.gltforge_pbr_metallic_roughness_metallic_factor(handle, matIdx));
+            mat.SetFloat("_Roughness",          GltforgeNative.gltforge_pbr_metallic_roughness_roughness_factor(handle, matIdx));
+            mat.SetFloat("_BumpScale",          GltforgeNative.gltforge_pbr_metallic_roughness_normal_scale(handle, matIdx));
+            mat.SetFloat("_OcclusionStrength",  GltforgeNative.gltforge_pbr_metallic_roughness_occlusion_strength(handle, matIdx));
+
+            var emissiveFactor = new float[3];
+            pin = GCHandle.Alloc(emissiveFactor, GCHandleType.Pinned);
+            try   { GltforgeNative.gltforge_pbr_metallic_roughness_emissive_factor(handle, matIdx, pin.AddrOfPinnedObject()); }
+            finally { pin.Free(); }
+            var emissiveColor = new Color(emissiveFactor[0], emissiveFactor[1], emissiveFactor[2]);
+            mat.SetColor("_EmissionColor", emissiveColor);
+
+            mat.SetFloat("_Cutoff", GltforgeNative.gltforge_pbr_metallic_roughness_alpha_cutoff(handle, matIdx));
+
+            return mat;
         }
 
         // ---- mesh building --------------------------------------------------
@@ -162,8 +362,8 @@ namespace Gltforge.Editor
 
                 if (fmt == 16)
                 {
-                    IntPtr idxPtr   = GltforgeNative.gltforge_mesh_submesh_indices_u16(handle, meshIdx, s, out uint idxCount);
-                    short[] shorts  = new short[idxCount];
+                    IntPtr idxPtr  = GltforgeNative.gltforge_mesh_submesh_indices_u16(handle, meshIdx, s, out uint idxCount);
+                    short[] shorts = new short[idxCount];
                     Marshal.Copy(idxPtr, shorts, 0, (int)idxCount);
                     triangles = Array.ConvertAll(shorts, v => (int)(ushort)v);
                 }
@@ -190,6 +390,7 @@ namespace Gltforge.Editor
             Transform parent,
             GltforgeAsset asset,
             Dictionary<uint, Mesh> builtMeshes,
+            Dictionary<uint, Material> builtMaterials,
             AssetImportContext ctx)
         {
             string nodeName = GltforgeNative.ReadName(
@@ -224,11 +425,21 @@ namespace Gltforge.Editor
             for (uint slot = 0; slot < meshRefCount; slot++)
             {
                 uint meshIdx = GltforgeNative.gltforge_node_mesh_index(handle, nodeIdx, slot);
-                if (builtMeshes.TryGetValue(meshIdx, out Mesh mesh))
+                if (!builtMeshes.TryGetValue(meshIdx, out Mesh mesh))
+                    continue;
+
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+                uint submeshCount = GltforgeNative.gltforge_mesh_submesh_count(handle, meshIdx);
+                var mats = new Material[submeshCount];
+                for (uint s = 0; s < submeshCount; s++)
                 {
-                    go.AddComponent<MeshFilter>().sharedMesh = mesh;
-                    go.AddComponent<MeshRenderer>();
+                    int matIdx = GltforgeNative.gltforge_mesh_submesh_material(handle, meshIdx, s);
+                    if (matIdx >= 0 && builtMaterials.TryGetValue((uint)matIdx, out Material mat))
+                        mats[s] = mat;
                 }
+
+                go.AddComponent<MeshRenderer>().sharedMaterials = mats;
             }
 
             // Recurse into children.
@@ -236,8 +447,24 @@ namespace Gltforge.Editor
             for (uint i = 0; i < childCount; i++)
             {
                 uint childIdx = GltforgeNative.gltforge_node_child(handle, nodeIdx, i);
-                TraverseNode(handle, childIdx, go.transform, asset, builtMeshes, ctx);
+                TraverseNode(handle, childIdx, go.transform, asset, builtMeshes, builtMaterials, ctx);
             }
+        }
+
+        // ---- utilities ------------------------------------------------------
+
+        /// <summary>
+        /// Converts an absolute file-system path to a Unity asset path (<c>Assets/…</c>).
+        /// </summary>
+        static string AbsoluteToAssetPath(string absolutePath)
+        {
+            string full    = Path.GetFullPath(absolutePath).Replace('\\', '/');
+            string dataDir = Path.GetFullPath(Application.dataPath).Replace('\\', '/');
+
+            if (full.StartsWith(dataDir, StringComparison.OrdinalIgnoreCase))
+                return "Assets" + full.Substring(dataDir.Length);
+
+            return full; // Outside the Assets folder — AssetDatabase.LoadAssetAtPath will return null.
         }
     }
 }

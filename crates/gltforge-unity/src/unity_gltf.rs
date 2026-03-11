@@ -1,4 +1,7 @@
-use crate::{convert, unity_mesh::UnityMesh, unity_node::UnityNode};
+use crate::{
+    convert, unity_image::UnityImage, unity_mesh::UnityMesh, unity_node::UnityNode,
+    unity_pbr_metallic_roughness::UnityPbrMetallicRoughness,
+};
 
 use std::{collections::HashMap, ffi::CStr, os::raw::c_char, path::Path, sync::Arc};
 
@@ -18,6 +21,12 @@ pub struct UnityGltf {
     /// All meshes, keyed by their glTF mesh index.
     /// Each [`UnityMesh`] contains a shared vertex array and one sub-mesh per glTF primitive.
     pub meshes: HashMap<u32, UnityMesh>,
+
+    /// All images, keyed by their glTF image index.
+    pub images: HashMap<u32, UnityImage>,
+
+    /// All `GLTF/PbrMetallicRoughness` materials, keyed by their glTF material index.
+    pub pbr_metallic_roughness: HashMap<u32, UnityPbrMetallicRoughness>,
 }
 
 /// Increment the reference count of a [`UnityGltf`] handle.
