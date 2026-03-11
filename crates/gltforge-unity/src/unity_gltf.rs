@@ -71,9 +71,15 @@ pub unsafe extern "C" fn gltforge_load(path: *const c_char) -> *const UnityGltf 
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
 
-        let json = std::fs::read_to_string(path).ok()?;
-        let gltf = gltforge::parser::parse(&json).ok()?;
-        let buffers = gltforge::parser::load_buffers(&gltf, base_dir).ok()?;
+        let data = std::fs::read(path).ok()?;
+        let (gltf, buffers) = if data.starts_with(b"glTF") {
+            gltforge::parser::parse_glb(&data).ok()?
+        } else {
+            let json = std::str::from_utf8(&data).ok()?;
+            let gltf = gltforge::parser::parse(json).ok()?;
+            let buffers = gltforge::parser::load_buffers(&gltf, base_dir).ok()?;
+            (gltf, buffers)
+        };
         let unity_gltf = convert::build_unity_gltf(&gltf, &buffers, file_stem).ok()?;
 
         Some(Arc::into_raw(Arc::new(unity_gltf)))

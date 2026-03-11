@@ -68,6 +68,8 @@ pub fn build_unity_gltf(
 
     // ---- images -------------------------------------------------------------
 
+    let bvs = gltf.buffer_views.as_deref().unwrap_or(&[]);
+
     let images: HashMap<u32, UnityImage> = gltf
         .images
         .as_deref()
@@ -75,11 +77,19 @@ pub fn build_unity_gltf(
         .iter()
         .enumerate()
         .map(|(idx, img)| {
+            let bytes = img.buffer_view.and_then(|bv_idx| {
+                let bv = bvs.get(bv_idx as usize)?;
+                let buf = buffers.get(bv.buffer as usize)?;
+                let start = bv.byte_offset as usize;
+                let end = start + bv.byte_length as usize;
+                buf.get(start..end).map(|s| s.to_vec())
+            });
             (
                 idx as u32,
                 UnityImage {
                     name: img.name.clone().unwrap_or_else(|| idx.to_string()),
                     uri: img.uri.clone(),
+                    bytes,
                 },
             )
         })
@@ -164,7 +174,6 @@ pub fn build_unity_gltf(
 
     // ---- meshes -------------------------------------------------------------
 
-    let bvs = gltf.buffer_views.as_deref().unwrap_or(&[]);
     let accessors = gltf.accessors.as_deref().unwrap_or(&[]);
     let mut meshes: HashMap<u32, UnityMesh> = HashMap::new();
 

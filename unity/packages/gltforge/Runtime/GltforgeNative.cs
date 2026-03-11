@@ -53,6 +53,8 @@ namespace Gltforge
         [DllImport(Lib)] public static extern uint   gltforge_image_count(IntPtr handle);
         [DllImport(Lib)] public static extern IntPtr gltforge_image_name(IntPtr handle, uint imageIdx, out uint len);
         [DllImport(Lib)] public static extern IntPtr gltforge_image_uri(IntPtr handle, uint imageIdx, out uint len);
+        /// <summary>Raw encoded bytes (PNG, JPEG, …) for buffer-view-embedded images. Null for URI-based images.</summary>
+        [DllImport(Lib)] public static extern IntPtr gltforge_image_bytes(IntPtr handle, uint imageIdx, out uint len);
 
         // ---- GLTF/PbrMetallicRoughness materials ----------------------------
 

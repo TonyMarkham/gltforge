@@ -1,13 +1,17 @@
 use crate::unity_gltf::UnityGltf;
 
-/// A glTF image entry, providing the URI needed for Unity to load the texture asset.
+/// A glTF image entry.
 pub struct UnityImage {
     /// The image name. Falls back to the image index as a string if unnamed.
     pub name: String,
 
     /// The URI of the image, if it references an external file.
-    /// `None` for buffer-view-embedded images.
+    /// `None` for buffer-view-embedded images (e.g. GLB).
     pub uri: Option<String>,
+
+    /// The raw encoded image bytes (PNG, JPEG, …) for buffer-view-embedded images.
+    /// `None` when the image is URI-based.
+    pub bytes: Option<Vec<u8>>,
 }
 
 // ─── FFI ────────────────────────────────────────────────────────────────────
@@ -55,5 +59,35 @@ pub unsafe extern "C" fn gltforge_image_uri(
                 .and_then(|i| i.uri.as_ref()),
             out_len,
         )
+    }
+}
+
+/// Return a pointer to the raw encoded image bytes (PNG, JPEG, …) for a
+/// buffer-view-embedded image. `out_len` receives the byte count.
+/// Returns null if `image_idx` is out of range or the image is URI-based.
+///
+/// # Safety
+/// `ptr` must be a valid, non-null handle. `out_len` may be null.
+/// The returned pointer is valid for the lifetime of the [`UnityGltf`] handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gltforge_image_bytes(
+    ptr: *const UnityGltf,
+    image_idx: u32,
+    out_len: *mut u32,
+) -> *const u8 {
+    let image = unsafe { &*ptr }.images.get(&image_idx);
+    match image.and_then(|i| i.bytes.as_ref()) {
+        Some(bytes) => {
+            if !out_len.is_null() {
+                unsafe { *out_len = bytes.len() as u32 };
+            }
+            bytes.as_ptr()
+        }
+        None => {
+            if !out_len.is_null() {
+                unsafe { *out_len = 0 };
+            }
+            std::ptr::null()
+        }
     }
 }

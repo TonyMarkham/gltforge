@@ -6,7 +6,6 @@
 
 - **Extension-first** — typed extension registration, import and export treated equally
 - **Open by design** — every intermediate representation is public and caller-owned
-- **Cross-platform** — native dylib (Windows, macOS, Linux, iOS, Android), WASM, PyO3 (Blender)
 - **Spec-compliant** — `extensionsRequired` enforced as hard errors, not warnings
 
 ## Workspace
@@ -29,14 +28,15 @@ gltforge = "0.0.4"
 ```rust
 use std::path::Path;
 use gltforge::parser;
-use gltforge::schema::Gltf;
 
 // Parse a .gltf file
 let json = std::fs::read_to_string("model.gltf")?;
-let gltf: Gltf = parser::parse(&json)?;
-
-// Load external binary buffers
+let gltf = parser::parse(&json)?;
 let buffers = parser::load_buffers(&gltf, Path::new("."))?;
+
+// Or parse a self-contained .glb file
+let data = std::fs::read("model.glb")?;
+let (gltf, buffers) = parser::parse_glb(&data)?;
 
 // Resolve an accessor to raw bytes
 let accessors = gltf.accessors.as_deref().unwrap_or(&[]);
@@ -49,8 +49,8 @@ let bytes = parser::resolve_accessor(&accessors[0], buffer_views, &buffers)?;
 ```bash
 cargo install gltforge-cli
 
-# Summary
-gltforge inspect model.gltf
+# Summary (works with .gltf and .glb)
+gltforge inspect model.glb
 
 # With node hierarchy and mesh details
 gltforge inspect model.gltf --nodes --mesh
@@ -97,9 +97,9 @@ mesh 0: Cesium_Man
 
 ## Unity
 
-`gltforge-unity` compiles to a native plugin (`gltforge_unity.dll`) and exposes a P/Invoke API. A `ScriptedImporter` lets you drag `.gltf` files directly into the Unity project panel.
+`gltforge-unity` compiles to a native plugin (`gltforge_unity.dll`) and exposes a P/Invoke API. A `ScriptedImporter` lets you drag `.gltf` and `.glb` files directly into the Unity project panel.
 
-The importer builds the full scene graph as a prefab hierarchy, with mesh geometry and transforms ready to use. Coordinates are converted from glTF's right-handed system to Unity's left-handed system (X negated, winding reversed). Index format (`UInt16`/`UInt32`) is selected automatically based on vertex count.
+The importer builds the full scene graph as a prefab hierarchy, with mesh geometry, materials, and transforms ready to use. Coordinates are converted from glTF's right-handed system to Unity's left-handed system (X negated, winding reversed). Index format (`UInt16`/`UInt32`) is selected automatically based on vertex count.
 
 **What's imported today:**
 
@@ -109,19 +109,20 @@ The importer builds the full scene graph as a prefab hierarchy, with mesh geomet
 | Node transforms (TRS and matrix) | ✅ |
 | Meshes (positions, normals, tangents, UVs) | ✅ |
 | Sub-meshes (one per glTF primitive) | ✅ |
-| Materials / textures | Planned |
+| Materials (PBR Metallic Roughness) | ✅ |
+| Textures and images | ✅ |
 | Skinning / animations | Planned |
 
 ## Roadmap
 
 - [x] glTF 2.0 schema types
 - [x] JSON parser + buffer loading
+- [x] GLB binary container parsing
 - [x] Accessor resolution
 - [x] CLI inspector (`--nodes`, `--mesh`, `--dump-verts`)
 - [x] Unity P/Invoke bindings — scene graph, node transforms, meshes, normals, tangents, UVs, sub-meshes
 - [x] Coordinate system conversion (glTF right-handed → Unity left-handed)
-- [ ] GLB binary chunk handling
-- [ ] Materials and textures
+- [x] Materials and textures (PBR Metallic Roughness)
 - [ ] Skinning (`JOINTS_0` / `WEIGHTS_0`) and animations
 - [ ] Extension registry + typed dispatch
 - [ ] `KHR_draco_mesh_compression`

@@ -59,13 +59,28 @@ fn main() -> ExitCode {
 
 #[track_caller]
 fn inspect(path: &PathBuf, nodes: bool, mesh: bool, dump_verts: Option<usize>) -> CliResult<()> {
-    let json = std::fs::read_to_string(path).map_err(|source| CliError::ReadFile {
-        path: path.clone(),
-        source,
-        location: ErrorLocation::from(Location::caller()),
-    })?;
+    let is_glb = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("glb"))
+        .unwrap_or(false);
 
-    let gltf = parser::parse(&json)?;
+    let (gltf, lazy_buffers) = if is_glb {
+        let data = std::fs::read(path).map_err(|source| CliError::ReadFile {
+            path: path.clone(),
+            source,
+            location: ErrorLocation::from(Location::caller()),
+        })?;
+        let (gltf, buffers) = parser::parse_glb(&data)?;
+        (gltf, Some(buffers))
+    } else {
+        let json = std::fs::read_to_string(path).map_err(|source| CliError::ReadFile {
+            path: path.clone(),
+            source,
+            location: ErrorLocation::from(Location::caller()),
+        })?;
+        (parser::parse(&json)?, None)
+    };
 
     print_summary(&gltf);
 
@@ -80,8 +95,13 @@ fn inspect(path: &PathBuf, nodes: bool, mesh: bool, dump_verts: Option<usize>) -
     }
 
     if let Some(mesh_idx) = dump_verts {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
-        let buffers = parser::load_buffers(&gltf, base_dir).map_err(CliError::Parse)?;
+        let buffers = match lazy_buffers {
+            Some(b) => b,
+            None => {
+                let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+                parser::load_buffers(&gltf, base_dir).map_err(CliError::Parse)?
+            }
+        };
         println!();
         dump_mesh_verts(&gltf, &buffers, mesh_idx);
     }

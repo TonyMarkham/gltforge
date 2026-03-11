@@ -9,7 +9,7 @@ using UnityEngine.Rendering;
 
 namespace Gltforge.Editor
 {
-    [ScriptedImporter(3, "gltf")]
+    [ScriptedImporter(4, new[] { "gltf", "glb" })]
     public class GltforgeImporter : ScriptedImporter
     {
         static Shader _pbrShader;
@@ -97,9 +97,45 @@ namespace Gltforge.Editor
 
             for (uint imageIdx = 0; imageIdx < imageCount; imageIdx++)
             {
+                bool isNormalMap = normalMapIndices.Contains(imageIdx);
+
                 IntPtr uriPtr = GltforgeNative.gltforge_image_uri(handle, imageIdx, out uint uriLen);
                 if (uriPtr == IntPtr.Zero)
-                    continue; // Embedded buffer-view images not yet supported.
+                {
+                    // Embedded image — decode raw bytes directly.
+                    IntPtr bytesPtr = GltforgeNative.gltforge_image_bytes(handle, imageIdx, out uint byteLen);
+                    if (bytesPtr == IntPtr.Zero)
+                    {
+                        ctx.LogImportWarning($"[gltforge] Image {imageIdx} has no URI and no embedded bytes; skipping.");
+                        continue;
+                    }
+
+                    byte[] rawBytes = new byte[byteLen];
+                    Marshal.Copy(bytesPtr, rawBytes, 0, (int)byteLen);
+
+                    // Use linear color space for normal maps; sRGB for everything else.
+                    var tex = new Texture2D(2, 2, TextureFormat.RGBA32, mipChain: false, linear: isNormalMap);
+                    if (!ImageConversion.LoadImage(tex, rawBytes))
+                    {
+                        ctx.LogImportWarning($"[gltforge] Failed to decode embedded image {imageIdx}; skipping.");
+                        UnityEngine.Object.DestroyImmediate(tex);
+                        continue;
+                    }
+
+                    string embName = GltforgeNative.ReadName(
+                        GltforgeNative.gltforge_image_name(handle, imageIdx, out uint embNameLen), embNameLen);
+                    tex.name = embName ?? imageIdx.ToString();
+
+                    built[imageIdx] = tex;
+                    ctx.AddObjectToAsset($"tex_{imageIdx}", tex);
+
+                    asset.textures.Add(new GltforgeAsset.TextureEntry
+                    {
+                        imageIndex = (int)imageIdx,
+                        texture    = tex,
+                    });
+                    continue;
+                }
 
                 string uri          = GltforgeNative.ReadName(uriPtr, uriLen);
                 string absolutePath = Path.Combine(gltfDir, uri);
@@ -107,25 +143,24 @@ namespace Gltforge.Editor
 
                 // Ensure normal maps are imported with the correct texture type so Unity
                 // applies the right channel swizzle and compression.
-                bool isNormalMap = normalMapIndices.Contains(imageIdx);
                 EnsureTextureType(assetPath, isNormalMap
                     ? TextureImporterType.NormalMap
                     : TextureImporterType.Default);
 
-                Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-                if (tex == null)
+                Texture2D uriTex = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                if (uriTex == null)
                 {
                     ctx.LogImportWarning($"[gltforge] Could not load texture '{assetPath}' (image {imageIdx}).");
                     continue;
                 }
 
                 ctx.DependsOnArtifact(AssetDatabase.GUIDFromAssetPath(assetPath));
-                built[imageIdx] = tex;
+                built[imageIdx] = uriTex;
 
                 asset.textures.Add(new GltforgeAsset.TextureEntry
                 {
                     imageIndex = (int)imageIdx,
-                    texture    = tex,
+                    texture    = uriTex,
                 });
             }
 

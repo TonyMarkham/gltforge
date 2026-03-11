@@ -14,7 +14,9 @@ pub mod unity_submesh;
 // -------------------------------------------------------------------------- //
 
 pub use unity_gltf::{UnityGltf, gltforge_load, gltforge_release, gltforge_retain};
-pub use unity_image::{UnityImage, gltforge_image_count, gltforge_image_name, gltforge_image_uri};
+pub use unity_image::{
+    UnityImage, gltforge_image_bytes, gltforge_image_count, gltforge_image_name, gltforge_image_uri,
+};
 pub use unity_indices::UnityIndices;
 pub use unity_mesh::{
     UnityMesh, gltforge_mesh_count, gltforge_mesh_index_format, gltforge_mesh_name,
