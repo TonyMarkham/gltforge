@@ -2,7 +2,9 @@
 members = [
     "crates/gltforge",
     "crates/gltforge-cli",
+    "crates/gltforge-unity-core",
     "crates/gltforge-unity",
+    "crates/gltforge-unity-export",
 ]
 resolver = "3"
 
@@ -14,10 +16,15 @@ repository = "https://github.com/TonyMarkham/gltforge"
 description = "A glTF 2.0 toolkit built for extensibility"
 
 [workspace.dependencies]
+bytemuck = { version = "1.25.0", features = ["derive"] }
 clap = { version = "4.5.60", features = ["derive"] }
 error-location = { version = "0.1.0" }
+libc = { version = "0.2.183" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149" }
 thiserror = { version = "2.0.18" }
+toml = { version = "1.0.6+spec-1.1.0" }
+windows-sys = { version = "0.61.2", features = ["Win32_System_LibraryLoader"] }
 
 gltforge = { path = "crates/gltforge", version = "0.0.5" }
+gltforge-unity-core = { path = "crates/gltforge-unity-core", version = "0.0.5" }

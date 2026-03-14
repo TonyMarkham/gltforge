@@ -1,0 +1,10 @@
+[package]
+name = "gltforge-unity-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unity-shaped data types shared by the gltforge Unity import and export crates"
+readme.workspace = true
+
+[dependencies]

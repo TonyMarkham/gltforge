@@ -1,0 +1,22 @@
+.gltforge-inspector {
+    padding: 2px 0 4px 0;
+}
+
+.gltforge-section {
+    margin-bottom: 8px;
+}
+
+.gltforge-section__header {
+    -unity-font-style: bold;
+    margin-bottom: 2px;
+    padding-left: 2px;
+}
+
+.gltforge-radio-group {
+    margin-left: 2px;
+}
+
+.gltforge-radio-group > .unity-radio-button {
+    margin-top: 1px;
+    margin-bottom: 1px;
+}

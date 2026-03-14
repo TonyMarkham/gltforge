@@ -16,18 +16,18 @@ namespace Gltforge
         // ---- scene ----------------------------------------------------------
 
         [DllImport(Lib)] public static extern IntPtr gltforge_scene_name(IntPtr handle, out uint len);
-        [DllImport(Lib)] public static extern uint   gltforge_root_node_count(IntPtr handle);
-        [DllImport(Lib)] public static extern uint   gltforge_root_node_index(IntPtr handle, uint slot);
+        [DllImport(Lib)] public static extern uint   gltforge_root_game_object_count(IntPtr handle);
+        [DllImport(Lib)] public static extern uint   gltforge_root_game_object_index(IntPtr handle, uint slot);
 
-        // ---- nodes ----------------------------------------------------------
+        // ---- game objects ---------------------------------------------------
 
-        [DllImport(Lib)] public static extern uint   gltforge_node_count(IntPtr handle);
-        [DllImport(Lib)] public static extern IntPtr gltforge_node_name(IntPtr handle, uint nodeIdx, out uint len);
-        [DllImport(Lib)] public static extern uint   gltforge_node_child_count(IntPtr handle, uint nodeIdx);
-        [DllImport(Lib)] public static extern uint   gltforge_node_child(IntPtr handle, uint nodeIdx, uint slot);
-        [DllImport(Lib)] public static extern uint   gltforge_node_mesh_count(IntPtr handle, uint nodeIdx);
-        [DllImport(Lib)] public static extern uint   gltforge_node_mesh_index(IntPtr handle, uint nodeIdx, uint slot);
-        [DllImport(Lib)] public static extern void   gltforge_node_transform(IntPtr handle, uint nodeIdx, IntPtr transform);
+        [DllImport(Lib)] public static extern uint   gltforge_game_object_count(IntPtr handle);
+        [DllImport(Lib)] public static extern IntPtr gltforge_game_object_name(IntPtr handle, uint goIdx, out uint len);
+        [DllImport(Lib)] public static extern uint   gltforge_game_object_child_count(IntPtr handle, uint goIdx);
+        [DllImport(Lib)] public static extern uint   gltforge_game_object_child(IntPtr handle, uint goIdx, uint slot);
+        [DllImport(Lib)] public static extern uint   gltforge_game_object_mesh_count(IntPtr handle, uint goIdx);
+        [DllImport(Lib)] public static extern uint   gltforge_game_object_mesh_index(IntPtr handle, uint goIdx, uint slot);
+        [DllImport(Lib)] public static extern void   gltforge_game_object_transform(IntPtr handle, uint goIdx, IntPtr transform);
 
         // ---- meshes ---------------------------------------------------------
 

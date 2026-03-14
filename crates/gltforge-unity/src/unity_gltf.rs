@@ -1,7 +1,5 @@
-use crate::{
-    convert, unity_image::UnityImage, unity_mesh::UnityMesh, unity_node::UnityNode,
-    unity_pbr_metallic_roughness::UnityPbrMetallicRoughness,
-};
+use crate::convert;
+use gltforge_unity_core::{UnityGameObject, UnityImage, UnityMesh, UnityPbrMetallicRoughness};
 
 use std::{collections::HashMap, ffi::CStr, os::raw::c_char, path::Path, sync::Arc};
 
@@ -12,11 +10,11 @@ pub struct UnityGltf {
     /// if the glTF scene has no name.
     pub scene_name: String,
 
-    /// Indices of the root nodes in the default scene.
-    pub root_nodes: Vec<u32>,
+    /// Indices of the root GameObjects in the default scene.
+    pub root_game_objects: Vec<u32>,
 
-    /// All nodes, keyed by their glTF node index.
-    pub nodes: HashMap<u32, UnityNode>,
+    /// All GameObjects, keyed by their glTF node index.
+    pub game_objects: HashMap<u32, UnityGameObject>,
 
     /// All meshes, keyed by their glTF mesh index.
     /// Each [`UnityMesh`] contains a shared vertex array and one sub-mesh per glTF primitive.

@@ -1,4 +1,9 @@
-use error_location::ErrorLocation;
+use crate::{
+    error::{ConvertError, ConvertResult},
+    gltf_primitive_data::GltfPrimitiveData,
+    unity_gltf::UnityGltf,
+};
+
 use gltforge::{
     parser::resolve_accessor,
     schema::{
@@ -6,22 +11,13 @@ use gltforge::{
         MeshPrimitiveMode,
     },
 };
-use std::{collections::HashMap, panic::Location};
-
-use crate::{
-    error::{ConvertError, ConvertResult},
-    gltf_primitive_data::GltfPrimitiveData,
-    unity_gltf::UnityGltf,
-    unity_image::UnityImage,
-    unity_indices::UnityIndices,
-    unity_mesh::UnityMesh,
-    unity_node::UnityNode,
-    unity_node_transform::UnityNodeTransform,
-    unity_pbr_metallic_roughness::{
-        ALPHA_MODE_BLEND, ALPHA_MODE_MASK, ALPHA_MODE_OPAQUE, UnityPbrMetallicRoughness,
-    },
-    unity_submesh::UnitySubMesh,
+use gltforge_unity_core::{
+    ALPHA_MODE_BLEND, ALPHA_MODE_MASK, ALPHA_MODE_OPAQUE, UnityGameObject, UnityImage,
+    UnityIndices, UnityMesh, UnityPbrMetallicRoughness, UnitySubMesh, UnityTransform,
 };
+
+use error_location::ErrorLocation;
+use std::{collections::HashMap, panic::Location};
 
 /// Build a [`UnityGltf`] from a parsed glTF document and its loaded buffers.
 ///
@@ -42,26 +38,26 @@ pub fn build_unity_gltf(
     let scene_name = scene
         .and_then(|s| s.name.clone())
         .unwrap_or_else(|| file_stem.to_string());
-    let root_nodes = scene
+    let root_game_objects = scene
         .and_then(|s| s.nodes.as_deref())
         .unwrap_or(&[])
         .to_vec();
 
-    // ---- nodes --------------------------------------------------------------
+    // ---- game objects -------------------------------------------------------
 
-    let mut nodes: HashMap<u32, UnityNode> = HashMap::new();
+    let mut game_objects: HashMap<u32, UnityGameObject> = HashMap::new();
 
     for (idx, node) in gltf.nodes.as_deref().unwrap_or(&[]).iter().enumerate() {
         let children = node.children.as_deref().unwrap_or(&[]).to_vec();
         let mesh_indices = node.mesh.map(|m| vec![m]).unwrap_or_default();
 
-        nodes.insert(
+        game_objects.insert(
             idx as u32,
-            UnityNode {
+            UnityGameObject {
                 name: node.name.clone().unwrap_or_else(|| idx.to_string()),
                 children,
                 mesh_indices,
-                transform: node_transform(node),
+                transform: build_transform(node),
             },
         );
     }
@@ -274,8 +270,8 @@ pub fn build_unity_gltf(
 
     Ok(UnityGltf {
         scene_name,
-        root_nodes,
-        nodes,
+        root_game_objects,
+        game_objects,
         meshes,
         images,
         pbr_metallic_roughness,
@@ -468,13 +464,13 @@ fn resolve_primitive(
     })
 }
 
-/// Build a [`UnityNodeTransform`] from a glTF node, converting to Unity's left-handed coordinate system.
+/// Build a [`UnityTransform`] from a glTF node, converting to Unity's left-handed coordinate system.
 ///
 /// Handles both the `matrix` form (column-major 4×4, decomposed into TRS) and the
 /// separate `translation`/`rotation`/`scale` properties. Missing components default to identity.
-fn node_transform(node: &gltforge::schema::Node) -> UnityNodeTransform {
+fn build_transform(node: &gltforge::schema::Node) -> UnityTransform {
     if let Some(m) = &node.matrix {
-        mat4_to_node_transform(m)
+        mat4_to_transform(m)
     } else {
         let position = node
             .translation
@@ -485,7 +481,7 @@ fn node_transform(node: &gltforge::schema::Node) -> UnityNodeTransform {
             .map(|r| [-r[0], r[1], r[2], -r[3]])
             .unwrap_or([0.0, 0.0, 0.0, 1.0]);
         let scale = node.scale.unwrap_or([1.0, 1.0, 1.0]);
-        UnityNodeTransform {
+        UnityTransform {
             position,
             rotation,
             scale,
@@ -494,7 +490,7 @@ fn node_transform(node: &gltforge::schema::Node) -> UnityNodeTransform {
 }
 
 /// Decompose a glTF column-major 4×4 matrix into TRS and convert to Unity left-handed space.
-fn mat4_to_node_transform(m: &[f32; 16]) -> UnityNodeTransform {
+fn mat4_to_transform(m: &[f32; 16]) -> UnityTransform {
     // glTF matrix is column-major: column k starts at index k*4.
     // Translation is the last column.
     let tx = m[12];
@@ -520,7 +516,7 @@ fn mat4_to_node_transform(m: &[f32; 16]) -> UnityNodeTransform {
 
     let [qx, qy, qz, qw] = rot_mat_to_quat([r00, r01, r02, r10, r11, r12, r20, r21, r22]);
 
-    UnityNodeTransform {
+    UnityTransform {
         position: [-tx, ty, tz],
         rotation: [-qx, qy, qz, -qw],
         scale: [sx, sy, sz],

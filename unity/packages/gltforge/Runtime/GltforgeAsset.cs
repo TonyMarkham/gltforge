@@ -7,7 +7,7 @@ namespace Gltforge
     public class GltforgeAsset : ScriptableObject
     {
         [Serializable]
-        public struct NodeEntry
+        public struct GameObjectEntry
         {
             /// <summary>glTF node index.</summary>
             public int nodeIndex;
@@ -49,7 +49,7 @@ namespace Gltforge
         }
 
         /// <summary>One entry per glTF node, in traversal order.</summary>
-        public List<NodeEntry> nodes;
+        public List<GameObjectEntry> gameObjects;
 
         /// <summary>One entry per unique glTF mesh index referenced by the scene.</summary>
         public List<MeshEntry> meshes;

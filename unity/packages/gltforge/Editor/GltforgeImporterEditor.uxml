@@ -1,0 +1,24 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements"
+         editor-extension-mode="True">
+    <Style src="GltforgeImporterEditor.uss" />
+
+    <ui:VisualElement class="gltforge-inspector">
+
+        <ui:VisualElement class="gltforge-section">
+            <ui:Label text="Naming" class="gltforge-section__header" />
+            <ui:RadioButtonGroup
+                binding-path="_namingMode"
+                choices="Strict,Auto"
+                class="gltforge-radio-group" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="gltforge-section">
+            <ui:Label text="Scene Root" class="gltforge-section__header" />
+            <ui:RadioButtonGroup
+                binding-path="_sceneRootMode"
+                choices="Auto,Always Wrap"
+                class="gltforge-radio-group" />
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

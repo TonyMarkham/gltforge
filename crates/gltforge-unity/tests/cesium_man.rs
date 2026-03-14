@@ -22,18 +22,18 @@ fn convert_cesium_man_structure() {
 
     // No scene name in glTF → falls back to file stem.
     assert_eq!(unity.scene_name, "CesiumMan");
-    assert_eq!(unity.root_nodes, vec![0u32]);
-    assert_eq!(unity.nodes.len(), 22);
+    assert_eq!(unity.root_game_objects, vec![0u32]);
+    assert_eq!(unity.game_objects.len(), 22);
     assert_eq!(unity.meshes.len(), 1);
 
     // Node 0: Z_UP matrix node, one child (Armature).
-    let n0 = unity.nodes.get(&0).expect("node 0 missing");
+    let n0 = unity.game_objects.get(&0).expect("node 0 missing");
     assert_eq!(n0.name, "Z_UP");
     assert_eq!(n0.children, vec![1u32]);
     assert!(n0.mesh_indices.is_empty());
 
     // Node 1: Armature, children include both the mesh node (2) and the skeleton root (3).
-    let n1 = unity.nodes.get(&1).expect("node 1 missing");
+    let n1 = unity.game_objects.get(&1).expect("node 1 missing");
     assert_eq!(n1.name, "Armature");
     assert!(
         n1.children.contains(&2),
@@ -45,19 +45,19 @@ fn convert_cesium_man_structure() {
     );
 
     // Node 2: skinned mesh node, references mesh 0.
-    let n2 = unity.nodes.get(&2).expect("node 2 missing");
+    let n2 = unity.game_objects.get(&2).expect("node 2 missing");
     assert_eq!(n2.name, "Cesium_Man");
     assert_eq!(n2.mesh_indices, vec![0u32]);
 
     // Node 3: Skeleton_torso_joint_1 — TRS node (no matrix in glTF).
-    let n3 = unity.nodes.get(&3).expect("node 3 missing");
+    let n3 = unity.game_objects.get(&3).expect("node 3 missing");
     assert_eq!(n3.name, "Skeleton_torso_joint_1");
 }
 
 #[test]
 fn convert_cesium_man_node3_trs() {
     let unity = load();
-    let n3 = unity.nodes.get(&3).expect("node 3 missing");
+    let n3 = unity.game_objects.get(&3).expect("node 3 missing");
     let t = &n3.transform;
 
     // glTF T=[0, 0.005, 0.679] → Unity position=[-gltf_x, y, z]=[0, 0.005, 0.679]
@@ -80,7 +80,7 @@ fn convert_cesium_man_node3_trs() {
 #[test]
 fn convert_cesium_man_z_up_matrix() {
     let unity = load();
-    let n0 = unity.nodes.get(&0).expect("node 0 missing");
+    let n0 = unity.game_objects.get(&0).expect("node 0 missing");
     let t = &n0.transform;
 
     // Z_UP matrix is a pure rotation (no translation, scale=1).

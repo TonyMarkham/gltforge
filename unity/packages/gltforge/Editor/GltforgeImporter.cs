@@ -9,9 +9,43 @@ using UnityEngine.Rendering;
 
 namespace Gltforge.Editor
 {
+    public enum NamingMode
+    {
+        /// <summary>
+        /// Uses the glTF name exactly as provided. Objects with no glTF name get an empty name,
+        /// which Unity renders as the default ("GameObject", "Mesh", etc.).
+        /// </summary>
+        Strict,
+
+        /// <summary>
+        /// Applies fallback names when a glTF object has no name: scene container uses the scene
+        /// name or file stem; meshes and materials fall back to their glTF index.
+        /// </summary>
+        Auto,
+    }
+
+    public enum SceneRootMode
+    {
+        /// <summary>
+        /// One glTF root node → use it directly as the prefab root, falling back to the scene
+        /// name then the file stem when the node has no name.
+        /// Multiple glTF root nodes → wrap them in a scene-named container GameObject.
+        /// </summary>
+        Auto,
+
+        /// <summary>
+        /// Always create a root container GameObject named after the scene or file,
+        /// regardless of how many glTF root nodes exist.
+        /// </summary>
+        AlwaysWrap,
+    }
+
     [ScriptedImporter(4, new[] { "gltf", "glb" })]
     public class GltforgeImporter : ScriptedImporter
     {
+        [SerializeField] NamingMode    _namingMode    = NamingMode.Strict; // ordinal 0
+        [SerializeField] SceneRootMode _sceneRootMode = SceneRootMode.Auto;
+
         static Shader _pbrShader;
         static Shader _pbrBlendShader;
         static Shader PbrShader      => _pbrShader      ??= Shader.Find("Shader Graphs/glTF PBR Metallic Roughness");
@@ -31,30 +65,46 @@ namespace Gltforge.Editor
 
             try
             {
+                string fileStem   = Path.GetFileNameWithoutExtension(ctx.assetPath);
+                string sceneName  = GltforgeNative.ReadName(GltforgeNative.gltforge_scene_name(handle, out uint sceneNameLen), sceneNameLen);
+                string rootName   = _namingMode == NamingMode.Auto ? (sceneName ?? fileStem) : sceneName;
+
                 var asset = ScriptableObject.CreateInstance<GltforgeAsset>();
-                asset.name      = GltforgeNative.ReadName(GltforgeNative.gltforge_scene_name(handle, out uint sceneNameLen), sceneNameLen);
-                asset.nodes     = new List<GltforgeAsset.NodeEntry>();
-                asset.meshes    = new List<GltforgeAsset.MeshEntry>();
-                asset.textures  = new List<GltforgeAsset.TextureEntry>();
-                asset.materials = new List<GltforgeAsset.MaterialEntry>();
+                asset.name        = rootName;
+                asset.gameObjects = new List<GltforgeAsset.GameObjectEntry>();
+                asset.meshes      = new List<GltforgeAsset.MeshEntry>();
+                asset.textures    = new List<GltforgeAsset.TextureEntry>();
+                asset.materials   = new List<GltforgeAsset.MaterialEntry>();
 
                 // Build textures, then materials (materials reference textures by index).
                 var normalMapIndices = CollectNormalMapIndices(handle);
                 var builtTextures    = BuildAllTextures(handle, gltfDir, normalMapIndices, asset, ctx);
-                var builtMaterials = BuildAllMaterials(handle, builtTextures, asset, ctx);
+                var builtMaterials   = BuildAllMaterials(handle, builtTextures, asset, ctx, _namingMode);
 
                 // Build all meshes up-front, deduplicated by glTF mesh index.
-                var builtMeshes = BuildAllMeshes(handle, asset, ctx);
+                var builtMeshes = BuildAllMeshes(handle, asset, ctx, _namingMode);
 
-                // Root GameObject named after the scene.
-                var root = new GameObject(asset.name);
+                // Build the root GameObject according to the configured SceneRootMode.
+                uint rootCount = GltforgeNative.gltforge_root_game_object_count(handle);
 
-                // Traverse the scene graph recursively.
-                uint rootCount = GltforgeNative.gltforge_root_node_count(handle);
-                for (uint i = 0; i < rootCount; i++)
+                GameObject root;
+                if (_sceneRootMode == SceneRootMode.Auto && rootCount == 1)
                 {
-                    uint nodeIdx = GltforgeNative.gltforge_root_node_index(handle, i);
-                    TraverseNode(handle, nodeIdx, root.transform, asset, builtMeshes, builtMaterials, ctx);
+                    // Single glTF root node — use it directly as the prefab root.
+                    uint goIdx = GltforgeNative.gltforge_root_game_object_index(handle, 0);
+                    root = TraverseGameObject(handle, goIdx, null, asset, builtMeshes, builtMaterials, ctx);
+                    if (_namingMode == NamingMode.Auto && string.IsNullOrEmpty(root.name))
+                        root.name = rootName;
+                }
+                else
+                {
+                    // Multiple root nodes (or AlwaysWrap) — wrap everything in a named container.
+                    root = new GameObject(rootName);
+                    for (uint i = 0; i < rootCount; i++)
+                    {
+                        uint goIdx = GltforgeNative.gltforge_root_game_object_index(handle, i);
+                        TraverseGameObject(handle, goIdx, root.transform, asset, builtMeshes, builtMaterials, ctx);
+                    }
                 }
 
                 ctx.AddObjectToAsset("asset", asset);
@@ -203,14 +253,15 @@ namespace Gltforge.Editor
             IntPtr handle,
             Dictionary<uint, Texture2D> builtTextures,
             GltforgeAsset asset,
-            AssetImportContext ctx)
+            AssetImportContext ctx,
+            NamingMode namingMode)
         {
             var built = new Dictionary<uint, Material>();
             uint matCount = GltforgeNative.gltforge_pbr_metallic_roughness_count(handle);
 
             for (uint matIdx = 0; matIdx < matCount; matIdx++)
             {
-                Material mat = BuildPbrMaterial(handle, matIdx, builtTextures);
+                Material mat = BuildPbrMaterial(handle, matIdx, builtTextures, namingMode);
                 built[matIdx] = mat;
 
                 asset.materials.Add(new GltforgeAsset.MaterialEntry
@@ -228,11 +279,12 @@ namespace Gltforge.Editor
         static Material BuildPbrMaterial(
             IntPtr handle,
             uint matIdx,
-            Dictionary<uint, Texture2D> builtTextures)
+            Dictionary<uint, Texture2D> builtTextures,
+            NamingMode namingMode)
         {
-            string name = GltforgeNative.ReadName(
-                GltforgeNative.gltforge_pbr_metallic_roughness_name(handle, matIdx, out uint nameLen), nameLen)
-                ?? matIdx.ToString();
+            string rawName = GltforgeNative.ReadName(
+                GltforgeNative.gltforge_pbr_metallic_roughness_name(handle, matIdx, out uint nameLen), nameLen);
+            string name = namingMode == NamingMode.Auto ? (rawName ?? matIdx.ToString()) : (rawName ?? string.Empty);
 
             uint alphaMode = GltforgeNative.gltforge_pbr_metallic_roughness_alpha_mode(handle, matIdx);
             var shader = alphaMode == 2 ? PbrBlendShader : PbrShader;
@@ -293,14 +345,15 @@ namespace Gltforge.Editor
         static Dictionary<uint, Mesh> BuildAllMeshes(
             IntPtr handle,
             GltforgeAsset asset,
-            AssetImportContext ctx)
+            AssetImportContext ctx,
+            NamingMode namingMode)
         {
             var builtMeshes = new Dictionary<uint, Mesh>();
             uint meshCount = GltforgeNative.gltforge_mesh_count(handle);
 
             for (uint meshIdx = 0; meshIdx < meshCount; meshIdx++)
             {
-                Mesh mesh = BuildMesh(handle, meshIdx);
+                Mesh mesh = BuildMesh(handle, meshIdx, namingMode);
                 builtMeshes[meshIdx] = mesh;
 
                 asset.meshes.Add(new GltforgeAsset.MeshEntry
@@ -315,10 +368,10 @@ namespace Gltforge.Editor
             return builtMeshes;
         }
 
-        static Mesh BuildMesh(IntPtr handle, uint meshIdx)
+        static Mesh BuildMesh(IntPtr handle, uint meshIdx, NamingMode namingMode)
         {
-            string meshName = GltforgeNative.ReadName(
-                GltforgeNative.gltforge_mesh_name(handle, meshIdx, out uint nameLen), nameLen);
+            string rawName  = GltforgeNative.ReadName(GltforgeNative.gltforge_mesh_name(handle, meshIdx, out uint nameLen), nameLen);
+            string meshName = namingMode == NamingMode.Auto ? (rawName ?? meshIdx.ToString()) : (rawName ?? string.Empty);
 
             // ---- vertices ---------------------------------------------------
 
@@ -419,47 +472,48 @@ namespace Gltforge.Editor
 
         // ---- scene graph traversal ------------------------------------------
 
-        static void TraverseNode(
+        static GameObject TraverseGameObject(
             IntPtr handle,
-            uint nodeIdx,
+            uint goIdx,
             Transform parent,
             GltforgeAsset asset,
             Dictionary<uint, Mesh> builtMeshes,
             Dictionary<uint, Material> builtMaterials,
             AssetImportContext ctx)
         {
-            string nodeName = GltforgeNative.ReadName(
-                GltforgeNative.gltforge_node_name(handle, nodeIdx, out uint nameLen), nameLen);
+            string goName = GltforgeNative.ReadName(
+                GltforgeNative.gltforge_game_object_name(handle, goIdx, out uint nameLen), nameLen);
 
-            var go = new GameObject(nodeName);
-            go.transform.SetParent(parent, worldPositionStays: false);
+            var go = new GameObject(goName);
+            if (parent != null)
+                go.transform.SetParent(parent, worldPositionStays: false);
 
             float[] t = new float[10];
             try
             {
                 var pin = GCHandle.Alloc(t, GCHandleType.Pinned);
-                try   { GltforgeNative.gltforge_node_transform(handle, nodeIdx, pin.AddrOfPinnedObject()); }
+                try   { GltforgeNative.gltforge_game_object_transform(handle, goIdx, pin.AddrOfPinnedObject()); }
                 finally { pin.Free(); }
             }
             catch (Exception e)
             {
-                ctx.LogImportWarning($"[gltforge] transform error on node {nodeIdx}: {e.Message}");
+                ctx.LogImportWarning($"[gltforge] transform error on game object {goIdx}: {e.Message}");
             }
             go.transform.localPosition = new Vector3(t[0], t[1], t[2]);
             go.transform.localRotation = new Quaternion(t[3], t[4], t[5], t[6]);
             go.transform.localScale    = new Vector3(t[7], t[8], t[9]);
 
-            asset.nodes.Add(new GltforgeAsset.NodeEntry
+            asset.gameObjects.Add(new GltforgeAsset.GameObjectEntry
             {
-                nodeIndex  = (int)nodeIdx,
+                nodeIndex  = (int)goIdx,
                 gameObject = go,
             });
 
-            // Attach meshes referenced by this node.
-            uint meshRefCount = GltforgeNative.gltforge_node_mesh_count(handle, nodeIdx);
+            // Attach meshes referenced by this GameObject.
+            uint meshRefCount = GltforgeNative.gltforge_game_object_mesh_count(handle, goIdx);
             for (uint slot = 0; slot < meshRefCount; slot++)
             {
-                uint meshIdx = GltforgeNative.gltforge_node_mesh_index(handle, nodeIdx, slot);
+                uint meshIdx = GltforgeNative.gltforge_game_object_mesh_index(handle, goIdx, slot);
                 if (!builtMeshes.TryGetValue(meshIdx, out Mesh mesh))
                     continue;
 
@@ -478,12 +532,14 @@ namespace Gltforge.Editor
             }
 
             // Recurse into children.
-            uint childCount = GltforgeNative.gltforge_node_child_count(handle, nodeIdx);
+            uint childCount = GltforgeNative.gltforge_game_object_child_count(handle, goIdx);
             for (uint i = 0; i < childCount; i++)
             {
-                uint childIdx = GltforgeNative.gltforge_node_child(handle, nodeIdx, i);
-                TraverseNode(handle, childIdx, go.transform, asset, builtMeshes, builtMaterials, ctx);
+                uint childIdx = GltforgeNative.gltforge_game_object_child(handle, goIdx, i);
+                TraverseGameObject(handle, childIdx, go.transform, asset, builtMeshes, builtMaterials, ctx);
             }
+
+            return go;
         }
 
         // ---- utilities ------------------------------------------------------

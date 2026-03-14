@@ -21,7 +21,7 @@ pub struct Primitive {
     pub material: Option<GltfId>,
 
     /// The topology type of primitives to render. Default: `TRIANGLES`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "MeshPrimitiveMode::is_default")]
     pub mode: MeshPrimitiveMode,
 
     /// An array of morph targets, each mapping attribute semantics to accessor indices.

@@ -27,6 +27,12 @@ pub enum PrimitiveMode {
     TriangleFan,
 }
 
+impl PrimitiveMode {
+    pub fn is_default(&self) -> bool {
+        matches!(self, PrimitiveMode::Triangles)
+    }
+}
+
 impl TryFrom<u32> for PrimitiveMode {
     type Error = SchemaError;
 

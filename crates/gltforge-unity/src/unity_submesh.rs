@@ -1,16 +1,6 @@
-use crate::{unity_gltf::UnityGltf, unity_indices::UnityIndices};
+use crate::unity_gltf::UnityGltf;
 
-/// A single glTF primitive converted to a Unity sub-mesh.
-/// Indices are pre-offset to reference the shared vertex array on [`crate::unity_mesh::UnityMesh`].
-pub struct UnitySubMesh {
-    /// Triangle indices with winding order reversed for Unity's left-handed convention.
-    /// Absolute offsets into the parent [`UnityMesh::vertices`] array.
-    pub indices: UnityIndices,
-
-    /// The glTF material index for this sub-mesh, if the primitive referenced one.
-    /// Maps into [`crate::unity_gltf::UnityGltf::pbr_metallic_roughness`].
-    pub material_index: Option<u32>,
-}
+use gltforge_unity_core::UnityIndices;
 
 /// Return the number of sub-meshes in mesh `mesh_idx`.
 ///
@@ -97,7 +87,6 @@ pub unsafe extern "C" fn gltforge_mesh_submesh_indices_u32(
 
 /// Return the `GLTF/PbrMetallicRoughness` material index for sub-mesh `submesh` of mesh
 /// `mesh_idx`, or `-1` if the primitive had no material.
-/// The index maps into [`crate::unity_gltf::UnityGltf::pbr_metallic_roughness`].
 ///
 /// # Safety
 /// `ptr` must be a valid, non-null handle.

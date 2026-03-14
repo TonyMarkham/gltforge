@@ -1,17 +1,21 @@
 [package]
-name = "gltforge-unity"
+name = "gltforge-unity-export"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Unity native plugin bindings for gltforge"
+description = "Unity glTF exporter — converts Unity mesh/material data to glTF 2.0"
 readme.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+bytemuck = { workspace = true }
 error-location = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
 gltforge = { workspace = true }
 gltforge-unity-core = { workspace = true }
-thiserror = { workspace = true }

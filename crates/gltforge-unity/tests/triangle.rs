@@ -16,10 +16,10 @@ fn convert_triangle() {
 
     // Scene: no name in glTF so falls back to file stem.
     assert_eq!(unity.scene_name, "Triangle");
-    assert_eq!(unity.root_nodes, vec![0u32]);
+    assert_eq!(unity.root_game_objects, vec![0u32]);
 
     // Node 0: unnamed, no children, references mesh 0.
-    let node = unity.nodes.get(&0).expect("node 0 missing");
+    let node = unity.game_objects.get(&0).expect("node 0 missing");
     assert_eq!(node.name, "0");
     assert!(node.children.is_empty());
     assert_eq!(node.mesh_indices, vec![0u32]);

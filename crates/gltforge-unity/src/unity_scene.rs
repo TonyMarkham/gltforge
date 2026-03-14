@@ -15,24 +15,24 @@ pub unsafe extern "C" fn gltforge_scene_name(
     unsafe { write_name(Some(&gltf.scene_name), out_len) }
 }
 
-/// Return the number of root nodes in the default scene.
+/// Return the number of root GameObjects in the default scene.
 ///
 /// # Safety
 /// `ptr` must be a valid, non-null handle.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gltforge_root_node_count(ptr: *const UnityGltf) -> u32 {
-    unsafe { &*ptr }.root_nodes.len() as u32
+pub unsafe extern "C" fn gltforge_root_game_object_count(ptr: *const UnityGltf) -> u32 {
+    unsafe { &*ptr }.root_game_objects.len() as u32
 }
 
-/// Return the node index of the `slot`-th root node.
+/// Return the index of the `slot`-th root GameObject.
 /// Returns `u32::MAX` if `slot` is out of range.
 ///
 /// # Safety
 /// `ptr` must be a valid, non-null handle.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gltforge_root_node_index(ptr: *const UnityGltf, slot: u32) -> u32 {
+pub unsafe extern "C" fn gltforge_root_game_object_index(ptr: *const UnityGltf, slot: u32) -> u32 {
     unsafe { &*ptr }
-        .root_nodes
+        .root_game_objects
         .get(slot as usize)
         .copied()
         .unwrap_or(u32::MAX)

@@ -16,16 +16,16 @@ fn convert_box() {
 
     // Scene: no name in glTF so falls back to file stem.
     assert_eq!(unity.scene_name, "Box");
-    assert_eq!(unity.root_nodes, vec![0u32]);
+    assert_eq!(unity.root_game_objects, vec![0u32]);
 
     // Node 0: unnamed, one child (node 1), no mesh.
-    let node0 = unity.nodes.get(&0).expect("node 0 missing");
+    let node0 = unity.game_objects.get(&0).expect("node 0 missing");
     assert_eq!(node0.name, "0");
     assert_eq!(node0.children, vec![1u32]);
     assert!(node0.mesh_indices.is_empty());
 
     // Node 1: unnamed, no children, references mesh 0.
-    let node1 = unity.nodes.get(&1).expect("node 1 missing");
+    let node1 = unity.game_objects.get(&1).expect("node 1 missing");
     assert_eq!(node1.name, "1");
     assert!(node1.children.is_empty());
     assert_eq!(node1.mesh_indices, vec![0u32]);
