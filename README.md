@@ -14,7 +14,10 @@
 |---|---|---|
 | `gltforge` | Core parser and schema types | Active development |
 | `gltforge-cli` | `gltforge inspect` command-line tool | Active development |
-| `gltforge-unity` | `#[repr(C)]` P/Invoke bindings for Unity | Active development |
+| `gltforge-unity` | `#[repr(C)]` P/Invoke import bindings for Unity | Active development |
+| `gltforge-unity-core` | Shared Unity-shaped data types (no FFI, no deps) | Active development |
+| `gltforge-unity-export` | glTF + GLB export pipeline for Unity | Active development |
+| `gltforge-sdk` | Extension SDK — `ExtensionHandler` trait and registry | Active development |
 | `gltforge-python` | PyO3 bindings (Blender addon) | Planned |
 | `gltforge-wasm` | wasm-bindgen bindings | Planned |
 
@@ -22,7 +25,7 @@
 
 ```toml
 [dependencies]
-gltforge = "0.0.4"
+gltforge = "0.0.6"
 ```
 
 ```rust
@@ -101,7 +104,14 @@ mesh 0: Cesium_Man
 
 The importer builds the full scene graph as a prefab hierarchy, with mesh geometry, materials, and transforms ready to use. Coordinates are converted from glTF's right-handed system to Unity's left-handed system (X negated, winding reversed). Index format (`UInt16`/`UInt32`) is selected automatically based on vertex count.
 
-**What's imported today:**
+**Import settings (per-asset):**
+
+| Setting | Options | Description |
+|---|---|---|
+| Naming | **Strict** / Auto | Strict mirrors glTF names as-is (empty if absent). Auto falls back to index or file stem. |
+| Scene Root | **Auto** / Always Wrap | Auto uses a single root node directly as the prefab root; Always Wrap always creates a scene container. |
+
+**What's imported:**
 
 | Data | Support |
 |---|---|
@@ -110,8 +120,21 @@ The importer builds the full scene graph as a prefab hierarchy, with mesh geomet
 | Meshes (positions, normals, tangents, UVs) | ✅ |
 | Sub-meshes (one per glTF primitive) | ✅ |
 | Materials (PBR Metallic Roughness) | ✅ |
-| Textures and images | ✅ |
+| Textures and images (URI + embedded) | ✅ |
 | Skinning / animations | Planned |
+
+### Export
+
+`gltforge-unity-export` compiles to a separate native plugin (`gltforge_unity_export.dll`). Two export options are available from the Unity Editor context menu under **Assets → Gltforge**:
+
+- **Export (glTF)** — writes a `.gltf` JSON file and a sidecar `.bin` buffer
+- **Export (GLB)** — writes a single self-contained `.glb` binary container
+
+Select any `GameObject` in the Project or Hierarchy panel, then choose the export format. The exporter traverses the full hierarchy, deduplicates shared meshes, converts coordinates back to glTF space (X negated, winding reversed, UV V-flipped), and writes a valid glTF 2.0 file.
+
+## Extension SDK
+
+`gltforge-sdk` provides the `ExtensionHandler` trait for building typed glTF extensions. Implement the hooks you need — `on_primitive`, `on_material`, `on_texture_info`, etc. — and register with `ExtensionRegistry`. Unrecognised extensions pass through untouched.
 
 ## Roadmap
 
@@ -120,11 +143,13 @@ The importer builds the full scene graph as a prefab hierarchy, with mesh geomet
 - [x] GLB binary container parsing
 - [x] Accessor resolution
 - [x] CLI inspector (`--nodes`, `--mesh`, `--dump-verts`)
-- [x] Unity P/Invoke bindings — scene graph, node transforms, meshes, normals, tangents, UVs, sub-meshes
+- [x] Unity import — scene graph, transforms, meshes, normals, tangents, UVs, sub-meshes
 - [x] Coordinate system conversion (glTF right-handed → Unity left-handed)
 - [x] Materials and textures (PBR Metallic Roughness)
+- [x] Unity export — glTF and GLB from Editor context menu
+- [x] Extension SDK (`ExtensionHandler` trait, `ExtensionRegistry`)
+- [x] Unity importer custom editor (Naming and Scene Root import settings)
 - [ ] Skinning (`JOINTS_0` / `WEIGHTS_0`) and animations
-- [ ] Extension registry + typed dispatch
 - [ ] `KHR_draco_mesh_compression`
 - [ ] `EXT_meshopt_compression`
 - [ ] PyO3 / Blender addon

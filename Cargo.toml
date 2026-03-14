@@ -9,7 +9,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/TonyMarkham/gltforge"
@@ -26,5 +26,5 @@ thiserror = { version = "2.0.18" }
 toml = { version = "1.0.6+spec-1.1.0" }
 windows-sys = { version = "0.61.2", features = ["Win32_System_LibraryLoader"] }
 
-gltforge = { path = "crates/gltforge", version = "0.0.5" }
-gltforge-unity-core = { path = "crates/gltforge-unity-core", version = "0.0.5" }
+gltforge = { path = "crates/gltforge", version = "0.0.6" }
+gltforge-unity-core = { path = "crates/gltforge-unity-core", version = "0.0.6" }
